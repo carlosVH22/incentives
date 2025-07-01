@@ -104,7 +104,7 @@ horas = st.sidebar.number_input("Horas de incentivo", value=3.0, min_value=0.0)
 IPT = st.sidebar.number_input("Ingreso por viaje", value=160.0, min_value=0.0)
 AR = st.sidebar.number_input("AR", value=80.0, min_value=0.0)
 CR = st.sidebar.number_input("CR", value=80.0, min_value=0.0)
-target_group = t.sidebar.number_input("Target Group", value=80.0, min_value=0.0)
+target_group = st.sidebar.number_input("Target Group", value=80.0, min_value=0.0)
 
 st.sidebar.header("🎯 Configura el Incentivo")
 tipo_incentivo = st.sidebar.selectbox("Tipo", ["dxgy", "multiplier", "guaranteed"])
