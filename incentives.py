@@ -123,15 +123,6 @@ if st.button("✅ Calcular incentivo y agregar al CSV"):
     incentivos, por_conductor = calcular_incentivo(GMV, burn_rate, cohort_size, win_rate,
                                                     TPH, horas, IPT, tipo_incentivo, tiers)
     regla = construir_regla_evento(tipo_incentivo, tiers, incentivos, IPT, TPH)
-    df_resultados = pd.DataFrame(resultados)
-    st.subheader("📊 Resultados por TIR")
-    st.dataframe(df_resultados, use_container_width=True)
-
-    incentivos_list = df_resultados["Incentivo estimado ($)"].tolist()
-    regla_evento = construir_regla_evento(tipo_incentivo, TIRs_info, incentivos_list, IPT, TPH)
-
-    st.subheader("📋 Event Rules (copia y pega)")
-    st.code(regla_evento, language='markdown')
 
     title_map = {
         "dxgy": "¡Obten hasta  {{maximum_total_amount}} adicionales!",
@@ -181,6 +172,22 @@ if st.button("✅ Calcular incentivo y agregar al CSV"):
     })
 
     st.success("Incentivo agregado exitosamente ✅")
+# =========== VISTA DE INCENTIVOS ACUMULADOS ==========
+
+if st.session_state.batch_acumulado:
+    st.markdown("---")
+    st.subheader("📦 Incentivos acumulados en esta sesión")
+
+    df_acumulado = pd.DataFrame(st.session_state.batch_acumulado)
+    
+    # Seleccionamos solo columnas relevantes para visualizar
+    columnas_resumen = [
+        "City", "Reward Period", "Event Period", "Driver Type",
+        "Event Type", "Budget", "Event Rules", "Push1_Send Time"
+    ]
+    df_mostrar = df_acumulado[columnas_resumen]
+    
+    st.dataframe(df_mostrar, use_container_width=True)
 
 # =========== DESCARGA Y RESETEO ==========
 
