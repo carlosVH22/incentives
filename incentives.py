@@ -84,7 +84,6 @@ city = st.sidebar.text_input("Ciudad", value="Ciudad X")
 GMV = st.sidebar.number_input("GMV total", value=1000000.0, min_value=0.0)
 burn_rate = st.sidebar.number_input("Burn rate (%)", value=5.0, min_value=0.0, max_value=100.0) / 100
 cohort_size = st.sidebar.number_input("Cohort size", value=500, min_value=1)
-win_rate = st.sidebar.number_input("Win rate (%)", value=18.0, min_value=0.0, max_value=100.0) / 100
 TPH = st.sidebar.number_input("TPH", value=2.0, min_value=0.0)
 horas = st.sidebar.number_input("Horas de incentivo", value=3.0, min_value=0.0)
 IPT = st.sidebar.number_input("Ingreso por viaje", value=160.0, min_value=0.0)
