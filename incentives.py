@@ -57,20 +57,13 @@ def calcular_incentivo(GMV, burn_rate, cohort_size, win_rate,
             incentivo = presupuesto_por_conductor * peso
         else:
             incentivo = 0
-        resultados.append({
-            "TIR": f"Tier {i+1}",
-            "Viajes requeridos": viajes,
-            "Incentivo estimado ($)": round(incentivo, 2),
-            "Valor estimado ($)": round(valor_estimado, 2),
-            "Esfuerzo ($)": round(esfuerzo, 2),
-            "Peso asignado": round(peso, 4)
-        })
+        resultados.append(incentivo)
     return resultados, presupuesto_por_conductor
 
 def construir_regla_evento(tipo, tiers, incentivos, IPT, TPH):
     reglas = []
     for i, viajes in enumerate(tiers):
-        recompensa = round(incentivos[i]['Incentivo estimado ($)'], 2)
+        recompensa = round(incentivos[i], 2)
         if tipo == 'dxgy':
             reglas.append(f"Tier{i+1}:{viajes}Trips*{int(recompensa)}$")
         elif tipo == 'multiplier':
@@ -127,24 +120,21 @@ push_time = f"{reward_day} {start_time.strftime('%H:%M')}"
 
 # Botón principal para calcular y agregar
 if st.button("✅ Calcular incentivo y agregar al CSV"):
-    resultados, por_conductor = calcular_incentivo(GMV, burn_rate, cohort_size, win_rate,
-                                                TPH, horas, IPT, tipo_incentivo, tiers)
-    
-    # Mostrar resumen de resultados
-    st.success("Incentivo agregado exitosamente ✅")
-    
+    incentivos, por_conductor = calcular_incentivo(GMV, burn_rate, cohort_size, win_rate,
+                                                    TPH, horas, IPT, tipo_incentivo, tiers)
+    regla = construir_regla_evento(tipo_incentivo, tiers, incentivos, IPT, TPH)
     df_resultados = pd.DataFrame(resultados)
     st.subheader("📊 Resultados por TIR")
     st.dataframe(df_resultados, use_container_width=True)
 
-    incentivos_list = [r['Incentivo estimado ($)'] for r in resultados]
-    regla_evento = construir_regla_evento(tipo_incentivo, tiers, incentivos_list, IPT, TPH)
+    incentivos_list = df_resultados["Incentivo estimado ($)"].tolist()
+    regla_evento = construir_regla_evento(tipo_incentivo, TIRs_info, incentivos_list, IPT, TPH)
 
     st.subheader("📋 Event Rules (copia y pega)")
     st.code(regla_evento, language='markdown')
 
     title_map = {
-        "dxgy": "¡Obten hasta {{maximum_total_amount}} adicionales!",
+        "dxgy": "¡Obten hasta  {{maximum_total_amount}} adicionales!",
         "multiplier": "¡Multiplica tus ganacias hasta x!",
         "guaranteed": "¡Ganacias garantizadas por!"
     }
@@ -166,7 +156,7 @@ if st.button("✅ Calcular incentivo y agregar al CSV"):
         }[tipo_incentivo],
         "Trigger Type": "Trip",
         "Budget Department": "Engage-Cityops",
-        "Budget": round(GMV * burn_rate, 2),
+        "Budget": round(GMV * burn_rate/100, 2),
         "Select Period": "",
         "Reward Period": reward_day,
         "Event Period": event_period,
@@ -178,7 +168,7 @@ if st.button("✅ Calcular incentivo y agregar al CSV"):
         "CR": CR,
         "Star Rating": 3.5,
         "Geofence": "",
-        "Event Rules": regla_evento,
+        "Event Rules": regla,
         "Title": title_map[tipo_incentivo],
         "Notes": "{{reward_rules}",
         "Comments": "",
@@ -189,6 +179,8 @@ if st.button("✅ Calcular incentivo y agregar al CSV"):
         "Push2_Send push to specified driver(s)": "",
         "Push2_Content": ""
     })
+
+    st.success("Incentivo agregado exitosamente ✅")
 
 # =========== DESCARGA Y RESETEO ==========
 
