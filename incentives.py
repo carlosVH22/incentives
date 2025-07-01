@@ -102,6 +102,9 @@ win_rate = st.sidebar.number_input("Win rate (%)", value=18.0, min_value=0.0, ma
 TPH = st.sidebar.number_input("TPH", value=2.0, min_value=0.0)
 horas = st.sidebar.number_input("Horas de incentivo", value=3.0, min_value=0.0)
 IPT = st.sidebar.number_input("Ingreso por viaje", value=160.0, min_value=0.0)
+AR = st.sidebar.number_input("AR", value=80.0, min_value=0.0)
+CR = st.sidebar.number_input("CR", value=80.0, min_value=0.0)
+target_group = t.sidebar.number_input("Target Group", value=80.0, min_value=0.0)
 
 st.sidebar.header("🎯 Configura el Incentivo")
 tipo_incentivo = st.sidebar.selectbox("Tipo", ["dxgy", "multiplier", "guaranteed"])
@@ -114,9 +117,9 @@ reward_day = st.text_input("📅 Reward Period (YYYY-MM-DD)", value=datetime.tod
 
 col1, col2 = st.columns(2)
 with col1:
-    start_time = st.time_input("Hora inicio evento", value=time(4, 0))
+    start_time = st.time_input("Hora inicio evento", value=time(4, 0), step=60)
 with col2:
-    end_time = st.time_input("Hora fin evento", value=time(23, 59))
+    end_time = st.time_input("Hora fin evento", value=time(23, 59), step=60)
 
 event_period = f"{start_time.strftime('%H:%M')}-{end_time.strftime('%H:%M')}"
 push_time = f"{reward_day} {start_time.strftime('%H:%M')}"
@@ -150,25 +153,28 @@ if st.button("✅ Calcular incentivo y agregar al CSV"):
         }[tipo_incentivo],
         "Trigger Type": "Trip",
         "Budget Department": "Engage-Cityops",
-        "Budget": round(GMV * burn_rate, 2),
+        "Budget": round(GMV * burn_rate/100, 2),
         "Select Period": "",
         "Reward Period": reward_day,
         "Event Period": event_period,
-        "Target Group": "1000289632",
+        "Target Group": target_group,
         "Ratio of Control Group": 10,
         "Trip Type": "Express,DiDi Entrega,Set Your Fare",
         "AR & CR Calculation Type": "Daily" if tipo_incentivo == "dxgy" else "Normal Logic",
-        "AR": 50,
-        "CR": 70,
-        "Star Rating": 3,
+        "AR": AR,
+        "CR": CR,
+        "Star Rating": 3.5,
         "Geofence": "",
         "Event Rules": regla,
         "Title": title_map[tipo_incentivo],
         "Notes": "{{reward_rules}",
-        "Comments": "FT",
+        "Comments": "",
         "Push1_Send Time": push_time,
         "Push1_Send push to specified driver(s)": "Drivers participating in the event",
-        "Push1_Content": push_map[tipo_incentivo]
+        "Push1_Content": push_map[tipo_incentivo],
+        "Push2_Send Time": "",
+        "Push2_Send push to specified driver(s)": "",
+        "Push2_Content": ""
     })
 
     st.success("Incentivo agregado exitosamente ✅")
