@@ -31,34 +31,26 @@ if 'batch_acumulado' not in st.session_state:
 
 # ================= LÓGICA =================
 
-def calcular_incentivo(GMV, burn_rate, cohort_size, win_rate,
-                       TPH, horas_incentivo, IPT, tipo_incentivo, TIRs_info):
+def calcular_incentivo(GMV, burn_rate, TPH, horas_incentivo, IPT, TIRs_info, winners_por_tier):
     budget_total = GMV * burn_rate
-    ganadores = int(cohort_size * win_rate)
-    presupuesto_por_conductor = budget_total / ganadores if ganadores > 0 else 0
+    baseline_viajes = TPH * horas_incentivo
 
-    viajes_base = TPH * horas_incentivo
-    valor_base = viajes_base * IPT
+    esfuerzos_tiers = []
+    for viajes, winners in zip(TIRs_info, winners_por_tier):
+        esfuerzo_individual = max(0, viajes - baseline_viajes)
+        esfuerzo_total = esfuerzo_individual * winners
+        esfuerzos_tiers.append(esfuerzo_total)
 
-    esfuerzos = [max(0, (viajes * IPT) - valor_base) for viajes in TIRs_info]
-    total_esfuerzo = sum(esfuerzos)
-    pesos = [1/len(TIRs_info)] * len(TIRs_info) if total_esfuerzo == 0 else [e/total_esfuerzo for e in esfuerzos]
+    total_esfuerzo = sum(esfuerzos_tiers)
+    valor_por_unidad_esfuerzo = budget_total / total_esfuerzo if total_esfuerzo > 0 else 0
 
-    resultados = []
-    for i, viajes in enumerate(TIRs_info):
-        valor_estimado = viajes * IPT
-        esfuerzo = esfuerzos[i]
-        peso = pesos[i]
-        if tipo_incentivo == 'dxgy':
-            incentivo = presupuesto_por_conductor * peso
-        elif tipo_incentivo == 'multiplier':
-            incentivo = valor_estimado * peso
-        elif tipo_incentivo == 'guaranteed':
-            incentivo = presupuesto_por_conductor * peso
-        else:
-            incentivo = 0
-        resultados.append(incentivo)
-    return resultados, presupuesto_por_conductor
+    incentivos = []
+    for esfuerzo_total, winners in zip(esfuerzos_tiers, winners_por_tier):
+        incentivo_total_tier = esfuerzo_total * valor_por_unidad_esfuerzo
+        incentivo_por_conductor = incentivo_total_tier / winners if winners > 0 else 0
+        incentivos.append(incentivo_por_conductor)
+
+    return incentivos, None  # El segundo valor se mantiene por compatibilidad
 
 def construir_regla_evento(tipo, tiers, incentivos, IPT, TPH):
     reglas = []
@@ -104,6 +96,8 @@ st.sidebar.header("🎯 Configura el Incentivo")
 tipo_incentivo = st.sidebar.selectbox("Tipo", ["dxgy", "multiplier", "guaranteed"])
 num_tiers = st.sidebar.slider("Niveles (TIRs)", 1, 6, 3)
 tiers = [st.sidebar.number_input(f"Viajes TIR #{i+1}", min_value=1, value=8 + i*2) for i in range(num_tiers)]
+winners_por_tier = [st.sidebar.number_input(f"Winners TIR #{i+1}", min_value=1, value=10) for i in range(num_tiers)]
+
 
 # Inputs para fechas y horas fuera del botón, en la página principal (no sidebar)
 st.markdown("### ⏳ Configuración de Periodos")
@@ -120,8 +114,7 @@ push_time = f"{reward_day} {start_time.strftime('%H:%M')}"
 
 # Botón principal para calcular y agregar
 if st.button("✅ Calcular incentivo y agregar al CSV"):
-    incentivos, por_conductor = calcular_incentivo(GMV, burn_rate, cohort_size, win_rate,
-                                                    TPH, horas, IPT, tipo_incentivo, tiers)
+    incentivos, por_conductor = calcular_incentivo(GMV, burn_rate, TPH, horas, IPT, tiers, winners_por_tier)
     regla = construir_regla_evento(tipo_incentivo, tiers, incentivos, IPT, TPH)
 
     title_map = {
