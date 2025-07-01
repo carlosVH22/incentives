@@ -139,7 +139,7 @@ if st.button("✅ Calcular incentivo y agregar al CSV"):
     push_map = {
         "dxgy": "Conéctate a DiDi y obtén hasta {{maximum_total_amount}} adicionales.",
         "multiplier": "Conéctate a DiDi y multiplica tus ganancias hasta x.",
-        "guaranteed": "Conéctate a DiDi y obtén ingresos garantizados."
+        "guaranteed": "Conéctate a DiDi y obtén ingresos garantizados por x"
     }
 
     st.session_state.batch_acumulado.append({
@@ -178,6 +178,16 @@ if st.button("✅ Calcular incentivo y agregar al CSV"):
     })
 
     st.success("Incentivo agregado exitosamente ✅")
+    
+    df_resultados = pd.DataFrame(resultados)
+    st.subheader("📊 Resultados por TIR")
+    st.dataframe(df_resultados, use_container_width=True)
+
+    incentivos_list = df_resultados["Incentivo estimado ($)"].tolist()
+    regla_evento = construir_regla_evento(tipo_incentivo, TIRs_info, incentivos_list, IPT, TPH)
+
+    st.subheader("📋 Event Rules (copia y pega)")
+    st.code(regla_evento, language='markdown')
 
 # =========== DESCARGA Y RESETEO ==========
 
