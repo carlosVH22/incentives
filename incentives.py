@@ -23,7 +23,7 @@ st.markdown(
     .main-header {
         color: #FF6600;
         font-weight: 900;
-        font-size: 50px;
+        font-size: 45px;
         text-align: center;
         margin-bottom: 10px;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -56,13 +56,90 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Sidebar para inputs
+import streamlit as st
+import pandas as pd
+from datetime import datetime, time
 
-# Header principal estilizado y centrado
-st.markdown("<h1 class='main-header'>Calculadora DXGY 🧮🍊</h1>", unsafe_allow_html=True)
+# --- Estilo CSS personalizado ---
+st.markdown("""
+<style>
+div.stButton > button {
+    background-color: #FF6600;
+    color: white;
+    border-radius: 12px;
+    font-weight: bold;
+    font-size: 16px;
+    padding: 10px 24px;
+    transition: background-color 0.3s ease;
+}
+div.stButton > button:hover {
+    background-color: #e65c00;
+}
+.main-header {
+    color: #FF6600;
+    font-weight: 900;
+    font-size: 50px;
+    text-align: center;
+    margin-bottom: 10px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+.sub-header {
+    color: #FF6600;
+    font-weight: 700;
+    font-size: 28px;
+    margin-top: 30px;
+    margin-bottom: 10px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+.metric-container {
+    margin-bottom: 10px;
+}
+.code-block {
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    padding: 10px 16px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.05);
+    font-size: 16px;
+    font-family: Consolas, monospace;
+    white-space: nowrap;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Expander con la consulta SQL
-with st.expander("📄 SQL Query para generar el CSV de viajes"):
-    st.code("""
+# --- Título ---
+st.markdown("<h1 class='main-header'>Calculadora DXGY 🧾🍊</h1>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <h3 style='text-align: center; color: #333333; font-size: 24px; font-weight: 600;'>
+        📥 Carga de archivos
+    </h3>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- Input CSV de ciudades (necesario antes de generar query) ---
+df_ciudades = st.file_uploader("🌐 Carga el CSV de ciudades (city_id, city_name, gmv, country_code, cluster)", type="csv")
+
+# --- Selección de cluster y generación dinámica de query ---
+cluster_opciones = ['Heros', 'Growers', 'Rocket', 'POC LAB', 'POC Academy', 'Superman']
+cluster_seleccionado = st.selectbox("🧱 Selecciona el cluster para generar la SQL", cluster_opciones)
+
+city_ids_str = "-- carga primero el CSV de ciudades --"
+countries_str = "-- carga primero el CSV de ciudades --"
+
+if df_ciudades:
+    df_c = pd.read_csv(df_ciudades, encoding='latin-1')
+    df_c.columns = df_c.columns.str.strip().str.lower()
+    df_cluster = df_c[df_c['cluster'] == cluster_seleccionado]
+    city_ids_cluster = df_cluster['city_id'].dropna().astype(int).tolist()
+    country_codes_cluster = df_cluster['country_code'].dropna().unique().tolist()
+
+    city_ids_str = ", ".join(str(cid) for cid in city_ids_cluster)
+    countries_str = "', '".join(country_codes_cluster)
+
+with st.expander("📄 SQL Query para generar el CSV de viajes (según el cluster seleccionado)"):
+    st.code(f"""
 SELECT
     pt,
     city_id,
@@ -74,15 +151,9 @@ SELECT
     COUNT(DISTINCT order_id) AS trips
 FROM international_capital.dwm_trd_order_pro_core_anycar_base_di
 WHERE pt = 20250623
-    AND country_code IN ('MX', 'CL', 'CO')
+    AND country_code IN ('{countries_str}')
     AND city_id IN (
-        56600400, 56530300, 56580300, 56580200, 56750400, 56570400, 56630300, 56490200,
-        56610400, 56690300, 56630500, 56720600, 56512100, 56730400, 56550200, 56600300,
-        56620300, 56590200, 56610300, 57220100, 57210100, 57390100, 57160100, 57190100,
-        52300900, 52060100, 52180200, 52140900, 52280100, 52270100, 52110400, 52280200,
-        52100200, 52290400, 52260100, 52240400, 52110200, 52030200, 52280500, 52020300,
-        52071100, 52250400, 52301000, 52260300, 52320100, 52220200, 52280400, 52260900,
-        52160400, 52060200, 52300200, 52110800
+        {city_ids_str}
     )
     AND is_td_finish = 1
 GROUP BY
@@ -93,25 +164,26 @@ GROUP BY
         UNIX_TIMESTAMP(finish_time) - INT(SUBSTR(stat_start_hour, -2, 2)) * 3600,
         'HH'
     );
-    """, language="sql")
+""", language="sql")
 
-
-# Sidebar para inputs
-st.sidebar.header("📥 Carga de archivos")
-df_viajes = st.file_uploader("CSV de viajes (pt, city_id, driver_id, trip_hour, trips)", type="csv")
-df_ciudades = st.file_uploader("CSV de ciudades (city_id, city_name, gmv, country_code)", type="csv")
-
-if df_viajes and df_ciudades:
+# --- Input CSV de viajes ---
+df_viajes = st.file_uploader("🚊 Carga el CSV de viajes (pt, city_id, driver_id, trip_hour, trips)", type="csv")
+if df_viajes:
     df_v = pd.read_csv(df_viajes)
-    df_c = pd.read_csv(df_ciudades, encoding='latin-1')
-    df_c.columns = df_c.columns.str.strip().str.lower()
-
     # Diccionario de ciudades
     directorio_ciudades = {
         row['city_name']: {"city_id": row['city_id'], "gmv": row['gmv'], "country_code": row['country_code']}
         for _, row in df_c.iterrows()
     }
-
+    
+    st.sidebar.markdown(
+    """
+    <h3 style='text-align: center; color: #333333; font-size: 22px; font-weight: 600;'>
+        🧪 Información del incentivo
+    </h3>
+    """,
+    unsafe_allow_html=True
+    )
     st.sidebar.header("🏙️ Selección de ciudad y horario")
     ciudad_seleccionada = st.sidebar.selectbox("Selecciona la ciudad", list(directorio_ciudades.keys()))
     city_info = directorio_ciudades[ciudad_seleccionada]
