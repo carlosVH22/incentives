@@ -147,10 +147,20 @@ if df_viajes and df_ciudades:
             st.metric("🔥 % Burn Real", f"{porcentaje_burn_real:.2f}%")
         with col2:
             st.metric("💸 Burn total ($)", f"{total_burn:,.2f}")
-            st.metric("🎯 % Burn Objetivo", f"{burn_objetivo:.2f}%")
+            st.metric("🎯 % Burn Target", f"{burn_objetivo:.2f}%")
         with col3:
             st.metric("🏁 Win Rate", f"{win_rate:.2%}")
 
+            delta_burn = burn_objetivo - porcentaje_burn_real
+            color = "normal"  # verde si delta positivo, rojo si negativo
+
+            st.metric(
+                "📉 Burn vs Traget",
+                value=f"{delta_burn:+.2f}%",
+                delta=f"{delta_burn:+.2f}%",
+                delta_color=color
+            )
+            
         st.markdown("---")
         st.markdown("<h3 class='sub-header'>📊 Desglose por Tier</h3>", unsafe_allow_html=True)
 
