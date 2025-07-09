@@ -23,7 +23,7 @@ st.markdown(
     .main-header {
         color: #FF6600;
         font-weight: 900;
-        font-size: 48px;
+        font-size: 50px;
         text-align: center;
         margin-bottom: 10px;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -56,8 +56,45 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 # Header principal estilizado y centrado
-st.markdown("<h1 class='main-header'>Cálculo DXGY 🍊</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>Calculadora DXGY 🧮🍊</h1>", unsafe_allow_html=True)
+
+# Expander con la consulta SQL
+with st.expander("📄 SQL Query para generar el CSV de viajes"):
+    st.code("""
+SELECT
+    pt,
+    city_id,
+    driver_id,
+    FROM_UNIXTIME(
+        UNIX_TIMESTAMP(finish_time) - INT(SUBSTR(stat_start_hour, -2, 2)) * 3600,
+        'HH'
+    ) AS trip_hour,
+    COUNT(DISTINCT order_id) AS trips
+FROM international_capital.dwm_trd_order_pro_core_anycar_base_di
+WHERE pt = 20250623
+    AND country_code IN ('MX', 'CL', 'CO')
+    AND city_id IN (
+        56600400, 56530300, 56580300, 56580200, 56750400, 56570400, 56630300, 56490200,
+        56610400, 56690300, 56630500, 56720600, 56512100, 56730400, 56550200, 56600300,
+        56620300, 56590200, 56610300, 57220100, 57210100, 57390100, 57160100, 57190100,
+        52300900, 52060100, 52180200, 52140900, 52280100, 52270100, 52110400, 52280200,
+        52100200, 52290400, 52260100, 52240400, 52110200, 52030200, 52280500, 52020300,
+        52071100, 52250400, 52301000, 52260300, 52320100, 52220200, 52280400, 52260900,
+        52160400, 52060200, 52300200, 52110800
+    )
+    AND is_td_finish = 1
+GROUP BY
+    pt,
+    city_id,
+    driver_id,
+    FROM_UNIXTIME(
+        UNIX_TIMESTAMP(finish_time) - INT(SUBSTR(stat_start_hour, -2, 2)) * 3600,
+        'HH'
+    );
+    """, language="sql")
+
 
 # Sidebar para inputs
 st.sidebar.header("📥 Carga de archivos")
