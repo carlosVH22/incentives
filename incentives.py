@@ -2,198 +2,201 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, time
 
-# Estilo personalizado
-st.set_page_config(page_title="Calculadora de Incentivos DiDi", layout="centered")
-st.markdown("""
+# --- Estilo CSS personalizado para botones y texto ---
+st.markdown(
+    """
     <style>
-        body { background-color: #fff8f0; }
-        .main { background-color: #fff8f0; color: #333; }
-        .stButton>button {
-            background-color: #f97316;
-            color: white;
-            border-radius: 10px;
-            height: 3em;
-            width: 100%;
-            font-weight: bold;
-        }
-        .stNumberInput>div>input { border-radius: 8px; }
-        .block-container { padding-top: 2rem; }
+    /* Botones con color naranja y bordes redondeados */
+    div.stButton > button {
+        background-color: #FF6600;
+        color: white;
+        border-radius: 12px;
+        font-weight: bold;
+        font-size: 16px;
+        padding: 10px 24px;
+        transition: background-color 0.3s ease;
+    }
+    div.stButton > button:hover {
+        background-color: #e65c00;
+    }
+    /* Centramos y estilizamos el header principal */
+    .main-header {
+        color: #FF6600;
+        font-weight: 900;
+        font-size: 48px;
+        text-align: center;
+        margin-bottom: 10px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    /* Subtítulos */
+    .sub-header {
+        color: #FF6600;
+        font-weight: 700;
+        font-size: 28px;
+        margin-top: 30px;
+        margin-bottom: 10px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    /* Pequeño espacio entre métricas */
+    .metric-container {
+        margin-bottom: 10px;
+    }
+    /* Código con fondo sutil y sombra */
+    .code-block {
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        padding: 10px 16px;
+        box-shadow: 0 0 8px rgba(0,0,0,0.05);
+        font-size: 16px;
+        font-family: Consolas, monospace;
+        white-space: nowrap;
+    }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-# Reinicio manual
-if st.sidebar.button("🔁 Reiniciar incentivos acumulados"):
-    st.session_state.batch_acumulado = []
-    st.sidebar.success("Acumulador reiniciado correctamente.")
+# Header principal estilizado y centrado
+st.markdown("<h1 class='main-header'>Cálculo DXGY 🍊</h1>", unsafe_allow_html=True)
 
-if 'batch_acumulado' not in st.session_state:
-    st.session_state.batch_acumulado = []
+# Sidebar para inputs
+st.sidebar.header("📥 Carga de archivos")
+df_viajes = st.file_uploader("CSV de viajes (pt, city_id, driver_id, trip_hour, trips)", type="csv")
+df_ciudades = st.file_uploader("CSV de ciudades (city_id, city_name, gmv, country_code)", type="csv")
 
-# ================= LÓGICA =================
+if df_viajes and df_ciudades:
+    df_v = pd.read_csv(df_viajes)
+    df_c = pd.read_csv(df_ciudades, encoding='latin-1')
+    df_c.columns = df_c.columns.str.strip().str.lower()
 
-def calcular_incentivo(GMV, burn_rate, TPH, horas_incentivo, IPT, TIRs_info, winners_por_tier):
-    budget_total = GMV * burn_rate
-    baseline_viajes = TPH * horas_incentivo
-
-    esfuerzos_tiers = []
-    for viajes, winners in zip(TIRs_info, winners_por_tier):
-        esfuerzo_individual = max(0, viajes - baseline_viajes)
-        esfuerzo_total = esfuerzo_individual * winners
-        esfuerzos_tiers.append(esfuerzo_total)
-
-    total_esfuerzo = sum(esfuerzos_tiers)
-    valor_por_unidad_esfuerzo = budget_total / total_esfuerzo if total_esfuerzo > 0 else 0
-
-    incentivos = []
-    for esfuerzo_total, winners in zip(esfuerzos_tiers, winners_por_tier):
-        incentivo_total_tier = esfuerzo_total * valor_por_unidad_esfuerzo
-        incentivo_por_conductor = incentivo_total_tier / winners if winners > 0 else 0
-        incentivos.append(incentivo_por_conductor)
-
-    return incentivos, None  # El segundo valor se mantiene por compatibilidad
-
-def construir_regla_evento(tipo, tiers, incentivos, IPT, TPH):
-    reglas = []
-    for i, viajes in enumerate(tiers):
-        recompensa = round(incentivos[i], 2)
-        if tipo == 'dxgy':
-            reglas.append(f"Tier{i+1}:{viajes}Trips*{int(recompensa)}$")
-        elif tipo == 'multiplier':
-            porcentaje = int((recompensa / (viajes * IPT)) * 100) if viajes * IPT > 0 else 0
-            cap = round(porcentaje / 100 * IPT)
-            reglas.append(f"Tier{i+1}: {viajes}Trips*{porcentaje}%ASP*Cap{cap}$")
-        elif tipo == 'guaranteed':
-            extra = round(recompensa, 2)
-            garantizado = viajes * IPT + extra
-            reglas.append(f"Tier{i+1}: {viajes}Trips*{int(viajes/TPH)}Hour*Guarantee{int(garantizado)}$*Extra{int(extra)}$")
-    return ",".join(reglas)
-
-def limpiar_emojis(texto):
-    return texto.encode('latin-1', 'ignore').decode('latin-1')
-
-# ============ INTERFAZ PRINCIPAL =============
-
-st.markdown("""
-    <h1 style='color:#f97316;text-align:center;'>🧮 Calculadora de Incentivos DiDi</h1>
-    <p style='text-align:center;color:#666;'>Optimiza tus programas de incentivos por TIRs 🚗</p>
-""", unsafe_allow_html=True)
-
-# Sidebar
-st.sidebar.header("📊 Parámetros Generales")
-city = st.sidebar.text_input("Ciudad", value="Ciudad X")
-GMV = st.sidebar.number_input("GMV total", value=1000000.0, min_value=0.0)
-burn_rate = st.sidebar.number_input("Burn rate (%)", value=5.0, min_value=0.0, max_value=100.0) / 100
-TPH = st.sidebar.number_input("TPH", value=2.0, min_value=0.0)
-horas = st.sidebar.number_input("Horas de incentivo", value=3.0, min_value=0.0)
-IPT = st.sidebar.number_input("Ingreso por viaje", value=160.0, min_value=0.0)
-AR = st.sidebar.number_input("AR", value=80.0, min_value=0.0)
-CR = st.sidebar.number_input("CR", value=80.0, min_value=0.0)
-target_group = st.sidebar.number_input("Target Group", value=80.0, min_value=0.0)
-
-st.sidebar.header("🎯 Configura el Incentivo")
-tipo_incentivo = st.sidebar.selectbox("Tipo", ["dxgy", "multiplier", "guaranteed"])
-num_tiers = st.sidebar.slider("Niveles (TIRs)", 1, 6, 3)
-tiers = [st.sidebar.number_input(f"Viajes TIR #{i+1}", min_value=1, value=8 + i*2) for i in range(num_tiers)]
-winners_por_tier = [st.sidebar.number_input(f"Winners TIR #{i+1}", min_value=1, value=10) for i in range(num_tiers)]
-
-
-# Inputs para fechas y horas fuera del botón, en la página principal (no sidebar)
-st.markdown("### ⏳ Configuración de Periodos")
-reward_day = st.text_input("📅 Reward Period (YYYY-MM-DD)", value=datetime.today().strftime('%Y-%m-%d'))
-
-col1, col2 = st.columns(2)
-with col1:
-    start_time = st.time_input("Hora inicio evento", value=time(4, 0), step=60)
-with col2:
-    end_time = st.time_input("Hora fin evento", value=time(23, 59), step=60)
-
-event_period = f"{start_time.strftime('%H:%M')}-{end_time.strftime('%H:%M')}"
-push_time = f"{reward_day} {start_time.strftime('%H:%M')}"
-
-# Botón principal para calcular y agregar
-if st.button("✅ Calcular incentivo y agregar al CSV"):
-    incentivos, por_conductor = calcular_incentivo(GMV, burn_rate, TPH, horas, IPT, tiers, winners_por_tier)
-    regla = construir_regla_evento(tipo_incentivo, tiers, incentivos, IPT, TPH)
-
-    title_map = {
-        "dxgy": "¡Obten hasta  {{maximum_total_amount}} adicionales!",
-        "multiplier": "¡Multiplica tus ganacias hasta x!",
-        "guaranteed": "¡Ganacias garantizadas por!"
+    # Diccionario de ciudades
+    directorio_ciudades = {
+        row['city_name']: {"city_id": row['city_id'], "gmv": row['gmv'], "country_code": row['country_code']}
+        for _, row in df_c.iterrows()
     }
 
-    push_map = {
-        "dxgy": "Conéctate a DiDi y obtén hasta {{maximum_total_amount}} adicionales.",
-        "multiplier": "Conéctate a DiDi y multiplica tus ganancias hasta x.",
-        "guaranteed": "Conéctate a DiDi y obtén ingresos garantizados por x"
-    }
+    st.sidebar.header("🏙️ Selección de ciudad y horario")
+    ciudad_seleccionada = st.sidebar.selectbox("Selecciona la ciudad", list(directorio_ciudades.keys()))
+    city_info = directorio_ciudades[ciudad_seleccionada]
+    city_id = city_info["city_id"]
+    gmv = city_info["gmv"]
+    country_code = city_info["country_code"]
 
-    st.session_state.batch_acumulado.append({
-        "Event Purpose": "Active DRV",
-        "City": city,
-        "Driver Type": "Express",
-        "Event Type": {
-            "dxgy": "RealtimeDxGyReward",
-            "multiplier": "Multiplier",
-            "guaranteed": "GuaranteeReward"
-        }[tipo_incentivo],
-        "Trigger Type": "Trip",
-        "Budget Department": "Engage-Cityops",
-        "Budget": round(GMV * burn_rate/100, 2),
-        "Select Period": "",
-        "Reward Period": reward_day,
-        "Event Period": event_period,
-        "Target Group": target_group,
-        "Ratio of Control Group": 10,
-        "Trip Type": "Express,DiDi Entrega,Set Your Fare",
-        "AR & CR Calculation Type": "Daily" if tipo_incentivo == "dxgy" else "Normal Logic",
-        "AR": AR,
-        "CR": CR,
-        "Star Rating": 3.5,
-        "Geofence": "",
-        "Event Rules": regla,
-        "Title": title_map[tipo_incentivo],
-        "Notes": "{{reward_rules}",
-        "Comments": "",
-        "Push1_Send Time": push_time,
-        "Push1_Send push to specified driver(s)": "Drivers participating in the event",
-        "Push1_Content": push_map[tipo_incentivo],
-        "Push2_Send Time": "",
-        "Push2_Send push to specified driver(s)": "",
-        "Push2_Content": ""
-    })
+    hora_inicio = st.sidebar.number_input("Hora inicio", min_value=0, max_value=23, value=9)
+    hora_fin = st.sidebar.number_input("Hora fin", min_value=0, max_value=23, value=12)
 
-    st.success("Incentivo agregado exitosamente ✅")
-# =========== VISTA DE INCENTIVOS ACUMULADOS ==========
+    st.sidebar.header("🎯 Define los Tiers")
+    num_tiers = st.sidebar.slider("Niveles (TIRs)", 1, 6, 3)
 
-if st.session_state.batch_acumulado:
-    st.markdown("---")
-    st.subheader("📦 Incentivos acumulados en esta sesión")
+    tiers_manual = []
+    for i in range(int(num_tiers)):
+        viajes = st.sidebar.number_input(f"Viajes Tier {i+1}", min_value=1, value=5 + i*2, key=f"viajes_t{i}")
+        reward = st.sidebar.number_input(f"Reward por viaje Tier {i+1} ($)", min_value=0, value=600 + i*200, key=f"reward_t{i}")
+        tiers_manual.append({"viajes": viajes, "reward": reward})
 
-    df_acumulado = pd.DataFrame(st.session_state.batch_acumulado)
-    
-    # Seleccionamos solo columnas relevantes para visualizar
-    columnas_resumen = [
-        "City", "Reward Period", "Event Period", "Driver Type",
-        "Event Type", "Budget", "Event Rules", "Push1_Send Time"
-    ]
-    df_mostrar = df_acumulado[columnas_resumen]
-    
-    st.dataframe(df_mostrar, use_container_width=True)
+    burn_objetivo = st.sidebar.number_input("🎯 Burn objetivo % (opc)", min_value=0.0, max_value=100.0, value=5.0)
 
-# =========== DESCARGA Y RESETEO ==========
+    if st.sidebar.button("✅ Calcular Burn"):
+        # --- PROCESAMIENTO ---
+        df_dia = df_v[df_v['city_id'] == city_id]
+        total_conductores_dia = df_dia['driver_id'].nunique()
 
-if st.button("📥 Descargar CSV con incentivos acumulados"):
-    df = pd.DataFrame(st.session_state.batch_acumulado)
-    for col in ["Title", "Push1_Content"]:
-        df[col] = df[col].apply(limpiar_emojis)
+        df_filtrado = df_dia[(df_dia['trip_hour'] >= hora_inicio) & (df_dia['trip_hour'] < hora_fin)]
+        df_conductor = df_filtrado.groupby('driver_id')['trips'].sum().reset_index()
 
-    st.download_button(
-        "Descargar archivo CSV",
-        data=df.to_csv(index=False).encode("latin-1"),
-        file_name="incentivos_batch.csv",
-        mime="text/csv"
-    )
+        tiers = sorted(tiers_manual, key=lambda x: x['viajes'])
+        conductores_por_tier = [0] * len(tiers)
 
-    if st.checkbox("¿Reiniciar acumulador después de descargar?"):
-        st.session_state.batch_acumulado = []
-        st.success("Acumulador reiniciado luego de la descarga ✔️")
+        for _, row in df_conductor.iterrows():
+            viajes = row['trips']
+            for i in range(len(tiers)):
+                if viajes >= tiers[i]['viajes']:
+                    conductores_por_tier[i] += 1
+
+        conductores_exclusivos = []
+        for i in range(len(tiers)):
+            if i == len(tiers) - 1:
+                exclusivos = conductores_por_tier[i]
+            else:
+                exclusivos = conductores_por_tier[i] - conductores_por_tier[i + 1]
+            conductores_exclusivos.append(exclusivos)
+
+        reward_acumulado_por_tier = []
+        for i in range(len(tiers)):
+            reward_total = 0
+            for j in range(i + 1):
+                if j == 0:
+                    viajes = tiers[j]['viajes']
+                else:
+                    viajes = tiers[j]['viajes'] - tiers[j - 1]['viajes']
+                reward_total += viajes * tiers[j]['reward']
+            reward_acumulado_por_tier.append(reward_total)
+
+        total_burn = sum(reward_acumulado_por_tier[i] * conductores_exclusivos[i] for i in range(len(tiers)))
+        porcentaje_burn_real = (total_burn / gmv) * 100 if gmv > 0 else 0
+        conductores_calificados = sum(conductores_exclusivos)
+        win_rate = conductores_calificados / total_conductores_dia if total_conductores_dia > 0 else 0
+
+        # --- RESULTADOS ---
+        st.markdown("---")
+        st.success("✅ Resultado del cálculo:")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("🚗 Conductores calificados", conductores_calificados)
+            st.metric("🔥 % Burn Real", f"{porcentaje_burn_real:.2f}%")
+        with col2:
+            st.metric("💸 Burn total ($)", f"{total_burn:,.2f}")
+            st.metric("🎯 % Burn Objetivo", f"{burn_objetivo:.2f}%")
+        with col3:
+            st.metric("🏁 Win Rate", f"{win_rate:.2%}")
+
+        st.markdown("---")
+        st.markdown("<h3 class='sub-header'>📊 Desglose por Tier</h3>", unsafe_allow_html=True)
+
+        porcentaje_sobre_calificados = [
+            (c / conductores_calificados if conductores_calificados > 0 else 0)
+            for c in conductores_exclusivos
+        ]
+
+        df_resultado = pd.DataFrame({
+            "Tier": [f"Tier {i+1}" for i in range(len(tiers))],
+            "Viajes requeridos": [t['viajes'] for t in tiers],
+            "Reward por viaje": [t['reward'] for t in tiers],
+            "Conductores exclusivos": conductores_exclusivos,
+            "Reward acumulado": reward_acumulado_por_tier,
+            "Burn por tier": [reward_acumulado_por_tier[i] * conductores_exclusivos[i] for i in range(len(tiers))],
+            "% sobre calificados": [f"{p:.1%}" for p in porcentaje_sobre_calificados]
+        })
+
+        st.dataframe(df_resultado, use_container_width=True, height=280)
+
+        st.markdown("---")
+        st.markdown("### 📝 Formato incremental para copiar y pegar:")
+
+        # Definir sufijo según country_code
+        if country_code == "MX":
+            sufijo = "*30MXN$"
+        elif country_code == "CR":
+            sufijo = "*3000₡"
+        else:
+            sufijo = "$"  # default para CL, CO, u otros
+
+        formato_tiers_incremental = []
+        for i, t in enumerate(tiers):
+            if i == 0:
+                viajes_incrementales = t['viajes']
+            else:
+                viajes_incrementales = t['viajes'] - tiers[i-1]['viajes']
+            reward_incremental = viajes_incrementales * t['reward']
+            formato_tiers_incremental.append(f"Tier{i+1}:{t['viajes']}Trips*{reward_incremental:.0f}{sufijo}")
+
+        formato_tiers_str = ", ".join(formato_tiers_incremental)
+        st.code(formato_tiers_str, language="")
+
+        st.markdown("---")
+        st.markdown(
+            "<p style='text-align:center; color:#888888; font-size:16px;'>"
+            "© 2025 DXGY Calculator - Hecho con ❤️ por POC"
+            "</p>", unsafe_allow_html=True
+        )
