@@ -344,9 +344,9 @@ if df_ciudades is not None:
 
         # Definir sufijo según country_code
         if country_code == "MX":
-            sufijo = "*30MXN$"
+            sufijo = "*MXN$"
         elif country_code == "CR":
-            sufijo = "*3000₡"
+            sufijo = "*₡"
         else:
             sufijo = "$"  # default para CL, CO, u otros
 
