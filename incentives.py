@@ -240,6 +240,7 @@ GROUP BY
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("🚀 TPH en horas del incentivo", f"{tph_incentivo:.2f}")
+        with col2:    
             st.metric("📌 Mínimo de trips estimado", f"{minimo_trips_estimado} viajes")
         promedio_asp = df_filtrado_horas['asp'].mean() if not df_filtrado_horas.empty else 0
         promedio_ipt = df_filtrado_horas['ipt'].mean() if not df_filtrado_horas.empty else 0
