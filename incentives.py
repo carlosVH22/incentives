@@ -237,7 +237,7 @@ GROUP BY
         minimo_trips_estimado = round(tph_incentivo * horas_incentivo)
 
         # Mostrar métricas
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2 = st.columns(4)
         with col1:
             st.metric("🚀 TPH en horas del incentivo", f"{tph_incentivo:.2f}")
         with col2:    
