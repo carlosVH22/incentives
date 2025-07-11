@@ -105,7 +105,7 @@ GROUP BY
 
         # --- Multiple select cohort ---
         cohorts_disponibles = sorted(df_vi['final_cohort'].fillna('No Cohort').unique())
-        cohort_seleccionados = st.multiselect("Selecciona cohorts a incentivar", cohorts_disponibles, default=cohorts_disponibles)
+        cohort_seleccionados = st.sidebar.multiselect("Selecciona cohorts a incentivar", cohorts_disponibles, default=cohorts_disponibles)
 
         # Filtrar por cohorts seleccionados
         df_v = df_vi[df_vi['final_cohort'].isin(cohort_seleccionados)]
