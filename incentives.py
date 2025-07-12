@@ -300,6 +300,17 @@ GROUP BY
         porcentaje_burn_real = (total_burn / gmv_total_real) * 100 if gmv_total_real > 0 else 0
         conductores_calificados = sum(conductores_exclusivos)
         win_rate = conductores_calificados / df_conductor.shape[0] if df_conductor.shape[0] > 0 else 0
+        def formatear_numero_grande(num):
+            num = float(num)
+            if abs(num) >= 1_000_000_000:
+                return f"{num / 1_000_000_000:.2f}B"
+            elif abs(num) >= 1_000_000:
+                return f"{num / 1_000_000:.2f}M"
+            elif abs(num) >= 1_000:
+                return f"{num / 1_000:.2f}K"
+            else:
+                return f"{num:.2f}"
+        gmv_formateado = formatear_numero_grande(gmv_total_real)
 
         st.markdown("---")
         st.markdown(f"<h4 class='section-title'>📈 Resultados del Incentivo</h4>", unsafe_allow_html=True)
@@ -316,7 +327,7 @@ GROUP BY
             color = "inverse" if delta_burn < 0 else "normal"
             st.metric("📉 Burn vs Target", value=f"{delta_burn:+.2f}%", delta=f"{delta_burn:+.2f}%", delta_color=color)
         with col4:
-            st.metric("💰 GMV Real", f"{gmv_total_real:,.2f}")
+            st.metric("💰 GMV Real", gmv_formateado)
 
         # --- Desglose por Tier ---
         st.markdown("---")
