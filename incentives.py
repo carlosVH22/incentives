@@ -358,33 +358,42 @@ GROUP BY
         # --- Formato incremental para copiar/pegar ---
         st.markdown("---")
         st.markdown("### 📝 Formato incremental para copiar y pegar:")
-
+        
         if country_code == "MX":
             sufijo = "MXN$"
         elif country_code == "CR":
             sufijo = "₡"
         else:
             sufijo = "$"
-
+        
         formato_tiers_incremental = []
-
+        
         for i, t in enumerate(tiers):
             viajes_incrementales = t['viajes'] if i == 0 else t['viajes'] - tiers[i - 1]['viajes']
+        
             if tipo_incentivo == "DXGY":
-                reward_incremental = viajes_incrementales * t['reward']
-                formato_tiers_incremental.append(f"Tier{i+1}: {viajes_incrementales}Trips*{reward_incremental:.0f}{sufijo}")
+                # En DXGY se usa el total de viajes requerido por tier, no los incrementales
+                reward_total = t['viajes'] * t['reward']
+                formato_tiers_incremental.append(
+                    f"Tier{i+1}: {t['viajes']}Trips*{reward_total:.0f}{sufijo}"
+                )
+        
             elif tipo_incentivo == "Multiplier":
                 multiplier_pct = int(t['multiplier'] * 100)
                 cap = round(avg_ipt * t['multiplier'])
-                formato_tiers_incremental.append(f"Tier{i+1}: {viajes_incrementales}Trips*{multiplier_pct}%ASP*Cap{cap}{sufijo}")
-
+                formato_tiers_incremental.append(
+                    f"Tier{i+1}: {viajes_incrementales}Trips*{multiplier_pct}%ASP*Cap{cap}{sufijo}"
+                )
+        
         formato_tiers_str = ", ".join(formato_tiers_incremental)
         st.code(formato_tiers_str, language="")
-
+        
         # --- Footer ---
         st.markdown("---")
         st.markdown(
             "<p style='text-align:center; color:#888888; font-size:16px;'>"
             "© 2025 DXGY/Multiplier Calculator - Hecho con ❤️ por POC"
-            "</p>", unsafe_allow_html=True
+            "</p>",
+            unsafe_allow_html=True
         )
+
