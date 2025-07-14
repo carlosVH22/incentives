@@ -299,7 +299,7 @@ if df_ciudades is not None:
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("🚗 Conductores calificados", conductores_calificados)
-            st.metric("🔥 % Burn Real", f"{porcentaje_burn_real:.2f}%")
+            st.metric("🔥 % Burn", f"{porcentaje_burn_real:.2f}%")
         with col2:
             st.metric("💸 Burn total ($)", f"{total_burn:,.2f}")
             st.metric("🎯 % Burn Target", f"{burn_objetivo:.2f}%")
@@ -309,7 +309,7 @@ if df_ciudades is not None:
             color = "inverse" if delta_burn < 0 else "normal"
             st.metric("📉 Burn vs Target", value=f"{delta_burn:+.2f}%", delta=f"{delta_burn:+.2f}%", delta_color=color)
         with col4:
-            st.metric("💰 GMV Real", gmv_formateado)
+            st.metric("💰 GMV", gmv_formateado)
 
         # --- Desglose por Tier ---
         st.markdown("---")
@@ -380,7 +380,8 @@ if df_ciudades is not None:
                 "Ciudad": ciudad_seleccionada,
                 "Cohorts": ", ".join(cohort_seleccionados),
                 "Horario": f"{hora_inicio:02d}:00 - {hora_fin:02d}:00",
-                "Incentivo": formato_tiers_str
+                "Incentivo": formato_tiers_str,
+                "Burn": porcentaje_burn_real
             }
             st.session_state.incentivos_guardados.append(incentivo_nuevo)
             st.success("✅ Incentivo guardado")
