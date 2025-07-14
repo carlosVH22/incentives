@@ -391,12 +391,7 @@ if df_ciudades is not None:
         
             df_acumulado = pd.DataFrame(st.session_state.incentivos_guardados)
             st.dataframe(df_acumulado, use_container_width=True)
-        
-            # Botón para borrar todos
-            if st.button("🗑️ Borrar todos los incentivos"):
-                st.session_state.incentivos_guardados = []
-                st.success("🧹 Incentivos eliminados")
-        
+            
             # Selección para borrar uno específico
             index_borrar = st.selectbox(
                 "Selecciona un incentivo para eliminar", 
@@ -408,6 +403,12 @@ if df_ciudades is not None:
                 st.session_state.incentivos_guardados.pop(index)
                 st.success("🗑️ Incentivo eliminado")
 
+
+            # Botón para borrar todos
+            if st.button("🗑️ Borrar todos los incentivos"):
+                st.session_state.incentivos_guardados = []
+                st.success("🧹 Incentivos eliminados")
+        
         
         # --- Footer ---
         st.markdown("---")
