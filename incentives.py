@@ -58,41 +58,23 @@ if df_ciudades is not None:
     df_c = pd.read_csv(df_ciudades, encoding='latin-1')
     df_c.columns = df_c.columns.str.strip().str.lower()
 
-    # 2. Mostrar SQL dinámico
-    st.markdown("<h4 class='section-title'>📄 2. SQL Query para generar el CSV de viajes</h4>", unsafe_allow_html=True)
+    # 2. Mostrar city_ids y country_codes
+    st.markdown("<h4 class='section-title'>🗺️ 2. Listas para copiar y pegar en SQL</h4>", unsafe_allow_html=True)
     clusters = sorted(df_c['cluster'].dropna().unique())
     cluster_seleccionado = st.selectbox("Selecciona tu cluster", clusters)
-
+    
     ciudades_cluster = df_c[df_c['cluster'] == cluster_seleccionado]
     city_ids = ciudades_cluster['city_id'].tolist()
     country_codes = ciudades_cluster['country_code'].unique().tolist()
-
+    
     city_ids_str = ', '.join(map(str, city_ids))
     country_codes_str = ", ".join(f"'{c}'" for c in country_codes)
-
-    with st.expander("📋 Ver SQL Query"):
-        st.code(f"""
-SELECT
-    pt,
-    city_id,
-    driver_id,
-    FROM_UNIXTIME(
-        UNIX_TIMESTAMP(finish_time) - INT(SUBSTR(stat_start_hour, -2, 2)) * 3600,
-        'HH'
-    ) AS trip_hour,
-    COUNT(DISTINCT order_id) AS trips
-FROM international_capital.dwm_trd_order_pro_core_anycar_base_di
-WHERE pt = 20250623
-    AND country_code IN ({country_codes_str})
-    AND city_id IN ({city_ids_str})
-    AND is_td_finish = 1
-GROUP BY
-    pt, city_id, driver_id,
-    FROM_UNIXTIME(
-        UNIX_TIMESTAMP(finish_time) - INT(SUBSTR(stat_start_hour, -2, 2)) * 3600,
-        'HH'
-    );
-        """, language="sql")
+    
+    with st.expander("📋 Lista de city_id"):
+        st.code(city_ids_str, language="sql")
+    
+    with st.expander("📋 Lista de country_code"):
+        st.code(country_codes_str, language="sql")
 
     # 3. Upload CSV viajes
     st.markdown("<h4 class='section-title'>📈 3. Carga el CSV de viajes</h4>", unsafe_allow_html=True)
@@ -387,6 +369,45 @@ GROUP BY
         
         formato_tiers_str = ", ".join(formato_tiers_incremental)
         st.code(formato_tiers_str, language="")
+
+        # --- Acumulador de incentivos ---
+        if 'incentivos_guardados' not in st.session_state:
+            st.session_state.incentivos_guardados = []
+        
+        # Botón para guardar el incentivo actual
+        if st.button("💾 Guardar incentivo actual"):
+            incentivo_nuevo = {
+                "Ciudad": ciudad_seleccionada,
+                "Cohorts": ", ".join(cohort_seleccionados),
+                "Horario": f"{hora_inicio:02d}:00 - {hora_fin:02d}:00",
+                "Incentivo": formato_tiers_str
+            }
+            st.session_state.incentivos_guardados.append(incentivo_nuevo)
+            st.success("✅ Incentivo guardado")
+        
+        # Mostrar tabla de incentivos guardados
+        if st.session_state.incentivos_guardados:
+            st.markdown("### 📋 Incentivos acumulados")
+        
+            df_acumulado = pd.DataFrame(st.session_state.incentivos_guardados)
+            st.dataframe(df_acumulado, use_container_width=True)
+        
+            # Botón para borrar todos
+            if st.button("🗑️ Borrar todos los incentivos"):
+                st.session_state.incentivos_guardados = []
+                st.success("🧹 Incentivos eliminados")
+        
+            # Selección para borrar uno específico
+            index_borrar = st.selectbox(
+                "Selecciona un incentivo para eliminar", 
+                options=[f"{i+1}. {item['Ciudad']} - {item['Horario']}" for i, item in enumerate(st.session_state.incentivos_guardados)]
+            )
+        
+            if st.button("❌ Borrar incentivo seleccionado"):
+                index = int(index_borrar.split(".")[0]) - 1
+                st.session_state.incentivos_guardados.pop(index)
+                st.success("🗑️ Incentivo eliminado")
+
         
         # --- Footer ---
         st.markdown("---")
