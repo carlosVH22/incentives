@@ -1,422 +1,190 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
+import numpy as np
+import matplotlib.pyplot as plt
+from prophet import Prophet
 
-# --- Estilo CSS personalizado ---
-st.markdown(
-    """
-    <style>
-    div.stButton > button {
-        background-color: #FF6600;
-        color: white;
-        border-radius: 12px;
-        font-weight: bold;
-        font-size: 16px;
-        padding: 10px 24px;
-        transition: background-color 0.3s ease;
-    }
-    div.stButton > button:hover {
-        background-color: #e65c00;
-    }
-    .main-header {
-        color: #FF6600;
-        font-weight: 900;
-        font-size: 50px;
-        text-align: center;
-        margin-bottom: 10px;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    .sub-header {
-        color: #FF6600;
-        font-weight: 700;
-        font-size: 28px;
-        margin-top: 30px;
-        margin-bottom: 10px;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    .section-title {
-        text-align: center;
-        font-size: 22px;
-        color: #555;
-        font-weight: 600;
-        margin-top: 25px;
-        margin-bottom: 15px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# =========================
+# Función principal (adaptada de tu versión)
+# =========================
+def weekly_forecast_with_adjustment_and_future(
+    df,
+    start_sunday='2025-01-05',
+    end_sunday=None,
+    final_date='2025-12-31',
+    model_kwargs=None
+):
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df.sort_values('Date')
 
-# Título principal
-st.markdown("<h1 class='main-header'>Calculadora DXGY 🧮🍊</h1>", unsafe_allow_html=True)
+    if end_sunday is None:
+        end_sunday = df['Date'].max()
+    start_sunday = pd.Timestamp(start_sunday)
+    end_sunday = pd.Timestamp(end_sunday)
+    final_date = pd.Timestamp(final_date)
+    horizon_end = max(end_sunday, final_date)
+    sundays = pd.date_range(start=start_sunday, end=horizon_end, freq='W-SUN')
 
-# 1. Upload CSV ciudades
-st.markdown("<h4 class='section-title'>📊 1. Carga el CSV de ciudades</h4>", unsafe_allow_html=True)
-df_ciudades = st.file_uploader("Sube el CSV de ciudades (city_id, city_name, gmv, country_code, cluster)", type="csv")
-
-if df_ciudades is not None:
-    df_c = pd.read_csv(df_ciudades, encoding='latin-1')
-    df_c.columns = df_c.columns.str.strip().str.lower()
-
-    # 2. Mostrar city_ids y country_codes
-    st.markdown("<h4 class='section-title'>🗺️ 2. Listas para copiar y pegar en SQL</h4>", unsafe_allow_html=True)
-    clusters = sorted(df_c['cluster'].dropna().unique())
-    cluster_seleccionado = st.selectbox("Selecciona tu cluster", clusters)
-    
-    ciudades_cluster = df_c[df_c['cluster'] == cluster_seleccionado]
-    city_ids = ciudades_cluster['city_id'].tolist()
-    country_codes = ciudades_cluster['country_code'].unique().tolist()
-    
-    city_ids_str = ', '.join(map(str, city_ids))
-    country_codes_str = ", ".join(f"'{c}'" for c in country_codes)
-    
-    with st.expander("📋 Lista de city_id"):
-        st.code(city_ids_str, language="sql")
-    
-    with st.expander("📋 Lista de country_code"):
-        st.code(country_codes_str, language="sql")
-
-    # 3. Upload CSV viajes
-    st.markdown("<h4 class='section-title'>📈 3. Carga el CSV de viajes</h4>", unsafe_allow_html=True)
-    df_viajes = st.file_uploader("Sube el CSV de viajes (pt, city_id, driver_id, trip_hour, trips, final_cohort, shor, asp, ipt, gmv)", type="csv")
-
-    if df_viajes is not None:
-        df_vi = pd.read_csv(df_viajes)
-        df_vi.columns = df_vi.columns.str.strip().str.lower()
-        
-
-        # --- Multiple select cohort ---
-        cohorts_disponibles = sorted(df_vi['final_cohort'].fillna('No Cohort').unique())
-        cohort_seleccionados = st.sidebar.multiselect("Selecciona cohorts a incentivar", cohorts_disponibles, default=cohorts_disponibles)
-
-        # Filtrar por cohorts seleccionados
-        df_v = df_vi[df_vi['final_cohort'].isin(cohort_seleccionados)]
-
-        # Sidebar inputs
-        st.sidebar.header("🏙️ Selección de ciudad y horario")
-        ciudades_disponibles = ciudades_cluster[['city_name', 'city_id', 'gmv', 'country_code']]
-        directorio_ciudades = {
-            row['city_name']: {
-                "city_id": row['city_id'],
-                "gmv": row['gmv'],
-                "country_code": row['country_code']
-            } for _, row in ciudades_disponibles.iterrows()
-        }
-        ciudad_seleccionada = st.sidebar.selectbox("Selecciona la ciudad", list(directorio_ciudades.keys()))
-        city_info = directorio_ciudades[ciudad_seleccionada]
-        city_id = city_info['city_id']
-        country_code = city_info['country_code']
-
-        hora_inicio = st.sidebar.number_input("Hora inicio (0-23)", min_value=0, max_value=23, value=9)
-        hora_fin = st.sidebar.number_input("Hora fin (0-23)", min_value=0, max_value=23, value=12)
-
-        st.sidebar.header("⚙️ Tipo de Incentivo")
-        tipo_incentivo = st.sidebar.selectbox("Selecciona el tipo de incentivo", ["DXGY", "Multiplier"])
-
-        st.sidebar.header("🎯 Define los Tiers")
-        num_tiers = st.sidebar.slider("Número de Tiers", min_value=1, max_value=6, value=3)
-
-        tiers_manual = []
-        for i in range(num_tiers):
-            viajes = st.sidebar.number_input(f"Viajes Tier {i+1}", min_value=1, value=5 + i*2, key=f"viajes_t{i}")
-
-            if tipo_incentivo == "DXGY":
-                reward = st.sidebar.number_input(f"Reward por viaje Tier {i+1} ($)", min_value=0, value=600 + i*200, key=f"reward_t{i}")
-                tiers_manual.append({"viajes": viajes, "reward": reward})
-
-            elif tipo_incentivo == "Multiplier":
-                multiplier = st.sidebar.number_input(f"Multiplier Tier {i+1} (%)", min_value=0.0, max_value=100.0, value=20.0 + i*10, step=1.0, key=f"multiplier_t{i}")
-                tiers_manual.append({"viajes": viajes, "multiplier": multiplier / 100})
-
-        burn_objetivo = st.sidebar.number_input("🎯 Burn objetivo % (opcional)", min_value=0.0, max_value=100.0, value=5.0)
-
-        # Filtramos solo datos de la ciudad seleccionada y cohorts seleccionados
-        df_dia = df_v[df_v['city_id'] == city_id]
-
-        # Agrupamos por hora para total viajes
-        trips_por_hora = df_dia.groupby('trip_hour')['trips'].sum().reset_index()
-
-        # Agrupamos por hora para contar conductores únicos activos en esa hora
-        conductores_por_hora = df_dia.groupby('trip_hour')['driver_id'].nunique().reset_index()
-        conductores_por_hora.rename(columns={'driver_id': 'conductores_activos'}, inplace=True)
-
-        # Unimos ambos DataFrames para calcular TPH por hora
-        tph_por_hora_df = pd.merge(trips_por_hora, conductores_por_hora, on='trip_hour', how='left')
-
-        # Calculamos TPH = trips / conductores activos en esa hora
-        tph_por_hora_df['conductores_activos'] = tph_por_hora_df['conductores_activos'].replace(0, pd.NA)
-        tph_por_hora_df['tph'] = tph_por_hora_df['trips'] / tph_por_hora_df['conductores_activos']
-
-        # Mostrar tabla
-        st.markdown("---")
-        st.markdown(f"<h4 style='color:#FF6600; text-align:center;'>Información y Visuales</h4>", unsafe_allow_html=True)
-        st.markdown(f"<h4 class='section-title'>⚙️ {ciudad_seleccionada} Tabla de Información</h4>", unsafe_allow_html=True)
-        st.dataframe(
-            tph_por_hora_df.rename(columns={
-                'trip_hour': 'Hora',
-                'trips': 'Total de viajes',
-                'conductores_activos': 'Conductores activos',
-                'tph': 'TPH'
-            }),
-            use_container_width=True,
-            height=250
+    if model_kwargs is None:
+        model_kwargs = dict(
+            seasonality_mode='additive',
+            yearly_seasonality=True,
+            changepoint_prior_scale=0.001,
+            seasonality_prior_scale=4,
+            n_changepoints=50
         )
 
-        # Gráficos Trips por hora
-        st.markdown(f"<h4 class='section-title'>🚖 {ciudad_seleccionada} Total de Viajes Por Hora</h4>", unsafe_allow_html=True)
-        chart_viajes = alt.Chart(tph_por_hora_df).mark_bar(color='#f97316').encode(
-            x=alt.X('trip_hour', title='Hora del día'),
-            y=alt.Y('trips', title='Total de viajes'),
-            tooltip=['trip_hour', 'trips']
-        ).properties(width=650, height=300)
-        st.altair_chart(chart_viajes, use_container_width=True)
+    weekly_rows = []
+    daily_preds_list = []
+    last_actual_date = df['Date'].max()
 
-        # Gráfico Drivers
-        st.markdown(f"<h4 class='section-title'>🚙 {ciudad_seleccionada} Total de DRVS Por Hora</h4>", unsafe_allow_html=True)
-        chart_drivers = alt.Chart(tph_por_hora_df).mark_bar(color='#3b82f6').encode(
-            x=alt.X('trip_hour', title='Hora del día'),
-            y=alt.Y('conductores_activos', title='Total de drivers'),
-            tooltip=['trip_hour', 'conductores_activos']
-        ).properties(width=650, height=300)
-        st.altair_chart(chart_drivers, use_container_width=True)
+    for s in sundays:
+        train = (
+            df[df['Date'] < s]
+            .rename(columns={'Date': 'ds', 'TGMV': 'y'})[['ds', 'y']]
+            .sort_values('ds')
+            .dropna()
+        )
+        if len(train) < 2:
+            continue
 
-        # Gráfico TPH
-        st.markdown(f"<h4 class='section-title'>🚃 {ciudad_seleccionada} TPH Por Hora</h4>", unsafe_allow_html=True)
-        chart_tph = alt.Chart(tph_por_hora_df).mark_bar(color='#74c476').encode(
-            x=alt.X('trip_hour', title='Hora del día'),
-            y=alt.Y('tph', title='TPH'),
-            tooltip=['trip_hour', 'tph']
-        ).properties(width=650, height=300)
-        st.altair_chart(chart_tph, use_container_width=True)
+        week_end = s + pd.Timedelta(days=6)
 
-        # Gráfico distribución de viajes por conductor en horario seleccionado
-        df_filtrado_horas = df_dia[(df_dia['trip_hour'] >= hora_inicio) & (df_dia['trip_hour'] < hora_fin)]
-        df_conductor = df_filtrado_horas.groupby('driver_id')['trips'].sum().reset_index()
+        model = Prophet(**model_kwargs)
+        model.fit(train)
 
-        distribucion = df_conductor['trips'].value_counts().sort_index().reset_index()
-        distribucion.columns = ['Viajes', 'Conductores']
+        future = pd.DataFrame({'ds': pd.date_range(start=s, end=week_end, freq='D')})
+        forecast = model.predict(future)[['ds', 'yhat']].copy()
 
-        st.markdown(f"<h4 class='section-title'>📊 Distribución de viajes por conductor entre {hora_inicio}:00 y {hora_fin}:00</h4>", unsafe_allow_html=True)
-        chart = alt.Chart(distribucion).mark_bar(color="#f97316").encode(
-            x=alt.X('Viajes:O', title='Número de viajes'),
-            y=alt.Y('Conductores:Q', title='Número de conductores'),
-            tooltip=['Viajes', 'Conductores']
-        ).properties(width=600, height=300)
-        st.altair_chart(chart, use_container_width=True)
+        baseline_week_pred = forecast['yhat'].sum()
 
-        # --- Cálculo del TPH incentivo y mínimo de viajes estimados ---
-        df_incentivo = df_filtrado_horas
-        df_por_hora_incentivo = df_incentivo.groupby('trip_hour').agg(
-            total_trips=('trips', 'sum'),
-            drivers_hora=('driver_id', 'nunique')
-        ).reset_index()
+        # Ajuste Sun-Mon-Tue
+        st_end_for_factor = s + pd.Timedelta(days=2)
+        actual_st = df[(df['Date'] >= s) & (df['Date'] <= st_end_for_factor)][['Date', 'TGMV']].copy()
+        actual_st = actual_st.rename(columns={'Date': 'ds', 'TGMV': 'actual'})
+        cmp_df = forecast.merge(actual_st, on='ds', how='left')
+        cmp_df['pct_diff'] = np.where(
+            (~cmp_df['actual'].isna()) & (cmp_df['yhat'] != 0),
+            (cmp_df['actual'] / cmp_df['yhat']) - 1.0,
+            np.nan
+        )
+        cmp_df = cmp_df[cmp_df['ds'] <= st_end_for_factor]
+        n_days_factor = int(cmp_df['pct_diff'].notna().sum())
+        factor = cmp_df['pct_diff'].mean() if n_days_factor > 0 else np.nan
 
-        suma_trips_incentivo = df_por_hora_incentivo['total_trips'].sum()
-        suma_drivers_incentivo = df_por_hora_incentivo['drivers_hora'].sum()
+        adjusted_week_pred = baseline_week_pred * (1.0 + factor) if pd.notna(factor) else baseline_week_pred
 
-        tph_incentivo = suma_trips_incentivo / suma_drivers_incentivo if suma_drivers_incentivo > 0 else 0
-        horas_incentivo = hora_fin - hora_inicio
-        minimo_trips_estimado = round(tph_incentivo * horas_incentivo)
+        week_actual = df[(df['Date'] >= s) & (df['Date'] <= week_end)]['TGMV']
+        actual_week_total = week_actual.sum() if len(week_actual) == 7 else np.nan
 
-        # Mostrar métricas
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("🚀 TPH en horas del incentivo", f"{tph_incentivo:.2f}")
-        with col2:    
-            st.metric("📌 Mínimo de trips estimado", f"{minimo_trips_estimado} viajes")
-            
-        promedio_asp = df_filtrado_horas['asp'].mean() if not df_filtrado_horas.empty else 0
-        promedio_ipt = df_filtrado_horas['ipt'].mean() if not df_filtrado_horas.empty else 0
-
-        
-        col_asp, col_ipt = st.columns(2)
-        with col_asp:
-            st.metric("💵 ASP promedio ($)", f"{promedio_asp:.2f}")
-        with col_ipt:
-            st.metric("🛠️ IPT promedio ($)", f"{promedio_ipt:.2f}")
-
-        # --- Lógica cálculo incentivos ---
-        df_conductor = df_filtrado_horas.groupby('driver_id')['trips'].sum().reset_index()
-
-        tiers = sorted(tiers_manual, key=lambda x: x['viajes'])
-        conductores_por_tier = [0] * len(tiers)
-
-        for _, row in df_conductor.iterrows():
-            viajes = row['trips']
-            for i in range(len(tiers)):
-                if viajes >= tiers[i]['viajes']:
-                    conductores_por_tier[i] += 1
-
-        conductores_exclusivos = []
-        for i in range(len(tiers)):
-            if i == len(tiers) - 1:
-                exclusivos = conductores_por_tier[i]
-            else:
-                exclusivos = conductores_por_tier[i] - conductores_por_tier[i + 1]
-            conductores_exclusivos.append(exclusivos)
-
-        reward_acumulado_por_tier = []
-        avg_ipt = df_filtrado_horas['ipt'].mean() if not df_filtrado_horas.empty else 0
-
-        if tipo_incentivo == "DXGY":
-            for i in range(len(tiers)):
-                reward_total = 0
-                for j in range(i + 1):
-                    viajes_incrementales = tiers[j]['viajes'] if j == 0 else tiers[j]['viajes'] - tiers[j - 1]['viajes']
-                    reward_total += viajes_incrementales * tiers[j]['reward']
-                reward_acumulado_por_tier.append(reward_total)
-
-        elif tipo_incentivo == "Multiplier":
-            for i in range(len(tiers)):
-                viajes_incrementales = tiers[i]['viajes'] if i == 0 else tiers[i]['viajes'] - tiers[i - 1]['viajes']
-                multiplier = tiers[i]['multiplier']
-                cap = round(avg_ipt * multiplier)
-                reward_total = viajes_incrementales
-                reward_total = viajes_incrementales * cap
-                if i > 0:
-                    reward_total += reward_acumulado_por_tier[i - 1]
-                reward_acumulado_por_tier.append(reward_total)
-
-        gmv_total_real = df_vi[df_vi['city_id'] == city_id]['gmv'].sum()
-        total_burn = sum(reward_acumulado_por_tier[i] * conductores_exclusivos[i] for i in range(len(tiers)))
-        porcentaje_burn_real = (total_burn / gmv_total_real) * 100 if gmv_total_real > 0 else 0
-        conductores_calificados = sum(conductores_exclusivos)
-        win_rate = conductores_calificados / df_conductor.shape[0] if df_conductor.shape[0] > 0 else 0
-        def formatear_numero_grande(num):
-            num = float(num)
-            if abs(num) >= 1_000_000_000:
-                return f"{num / 1_000_000_000:.2f}B"
-            elif abs(num) >= 1_000_000:
-                return f"{num / 1_000_000:.2f}M"
-            elif abs(num) >= 1_000:
-                return f"{num / 1_000:.2f}K"
-            else:
-                return f"{num:.2f}"
-        gmv_formateado = formatear_numero_grande(gmv_total_real)
-
-        st.markdown("---")
-        st.markdown(f"<h4 class='section-title'>📈 Resultados del Incentivo</h4>", unsafe_allow_html=True)
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("🚗 Conductores calificados", conductores_calificados)
-            st.metric("🔥 % Burn", f"{porcentaje_burn_real:.2f}%")
-        with col2:
-            st.metric("💸 Burn total ($)", f"{total_burn:,.2f}")
-            st.metric("🎯 % Burn Target", f"{burn_objetivo:.2f}%")
-        with col3:
-            st.metric("🏁 Win Rate", f"{win_rate:.2%}")
-            delta_burn = burn_objetivo - porcentaje_burn_real
-            color = "inverse" if delta_burn < 0 else "normal"
-            st.metric("📉 Burn vs Target", value=f"{delta_burn:+.2f}%", delta=f"{delta_burn:+.2f}%", delta_color=color)
-        with col4:
-            st.metric("💰 GMV", gmv_formateado)
-
-        # --- Desglose por Tier ---
-        st.markdown("---")
-        st.markdown("<h3 class='sub-header'>📊 Desglose por Tier</h3>", unsafe_allow_html=True)
-
-        porcentaje_sobre_calificados = [
-            (c / conductores_calificados if conductores_calificados > 0 else 0)
-            for c in conductores_exclusivos
-        ]
-
-        df_resultado = pd.DataFrame({
-            "Tier": [f"Tier {i+1}" for i in range(len(tiers))],
-            "Viajes requeridos": [t['viajes'] for t in tiers],
-            "Conductores exclusivos": conductores_exclusivos,
-            "Reward acumulado": reward_acumulado_por_tier,
-            "Burn por tier": [reward_acumulado_por_tier[i] * conductores_exclusivos[i] for i in range(len(tiers))],
-            "% sobre calificados": [f"{p:.1%}" for p in porcentaje_sobre_calificados]
+        weekly_rows.append({
+            'week_start': s,
+            'week_end': week_end,
+            'baseline_week_pred': baseline_week_pred,
+            'adjustment_factor_SunMonTue': factor,
+            'n_days_used_for_factor': n_days_factor,
+            'adjusted_week_pred_hist': adjusted_week_pred,
+            'actual_week_total': actual_week_total
         })
 
-        if tipo_incentivo == "DXGY":
-            df_resultado["Reward por viaje"] = [t['reward'] for t in tiers]
-        elif tipo_incentivo == "Multiplier":
-            df_resultado["Multiplier %"] = [f"{t['multiplier']*100:.0f}%" for t in tiers]
-            df_resultado["Cap por viaje"] = [round(avg_ipt * t['multiplier']) for t in tiers]
+        dtmp = forecast[['ds', 'yhat']].copy()
+        dtmp['week_start'] = s
+        dtmp.rename(columns={'yhat': 'pred'}, inplace=True)
+        daily_preds_list.append(dtmp)
 
-        st.dataframe(df_resultado, use_container_width=True, height=300)
+    weekly_df = pd.DataFrame(weekly_rows).sort_values('week_start').reset_index(drop=True)
+    daily_df = pd.concat(daily_preds_list, ignore_index=True) if daily_preds_list else pd.DataFrame()
+    if weekly_df.empty:
+        return weekly_df, daily_df
 
-        # --- Formato incremental para copiar/pegar ---
-        st.markdown("---")
-        st.markdown("### 📝 Formato incremental para copiar y pegar:")
-        
-        if country_code == "MX":
-            sufijo = "MXN$"
-        elif country_code == "CR":
-            sufijo = "₡"
-        else:
-            sufijo = "$"
-        
-        formato_tiers_incremental = []
-        
-        for i, t in enumerate(tiers):
-            viajes_incrementales = t['viajes'] if i == 0 else t['viajes'] - tiers[i - 1]['viajes']
-        
-            if tipo_incentivo == "DXGY":
-                # En DXGY se usa el total de viajes requerido por tier, no los incrementales
-                reward_total = t['viajes'] * t['reward']
-                formato_tiers_incremental.append(
-                    f"Tier{i+1}: {t['viajes']}Trips*{reward_total:.0f}{sufijo}"
-                )
-        
-            elif tipo_incentivo == "Multiplier":
-                multiplier_pct = int(t['multiplier'] * 100)
-                cap = round(avg_ipt * t['multiplier'])
-                formato_tiers_incremental.append(
-                    f"Tier{i+1}: {viajes_incrementales}Trips*{multiplier_pct}%ASP*Cap{cap}{sufijo}"
-                )
-        
-        formato_tiers_str = ", ".join(formato_tiers_incremental)
-        st.code(formato_tiers_str, language="")
+    # Calcular promedios
+    valid_factors = weekly_df['adjustment_factor_SunMonTue'].dropna()
+    avg_all = valid_factors.mean() if len(valid_factors) > 0 else 0.0
+    avg_neg = valid_factors[valid_factors < 0].mean() if (valid_factors < 0).any() else avg_all
+    avg_pos = valid_factors[valid_factors > 0].mean() if (valid_factors > 0).any() else avg_all
 
-        # --- Acumulador de incentivos ---
-        if 'incentivos_guardados' not in st.session_state:
-            st.session_state.incentivos_guardados = []
-        
-        # Botón para guardar el incentivo actual
-        if st.button("💾 Guardar incentivo actual"):
-            incentivo_nuevo = {
-                "Ciudad": ciudad_seleccionada,
-                "Cohorts": ", ".join(cohort_seleccionados),
-                "Horario": f"{hora_inicio:02d}:00 - {hora_fin:02d}:00",
-                "Incentivo": formato_tiers_str,
-                "Burn": porcentaje_burn_real
-            }
-            st.session_state.incentivos_guardados.append(incentivo_nuevo)
-            st.success("✅ Incentivo guardado")
-        
-        # Mostrar tabla de incentivos guardados
-        if st.session_state.incentivos_guardados:
-            st.markdown("### 📋 Incentivos acumulados")
-        
-            df_acumulado = pd.DataFrame(st.session_state.incentivos_guardados)
-            st.dataframe(df_acumulado, use_container_width=True)
-            
-            # Selección para borrar uno específico
-            index_borrar = st.selectbox(
-                "Selecciona un incentivo para eliminar", 
-                options=[f"{i+1}. {item['Ciudad']} - {item['Horario']}" for i, item in enumerate(st.session_state.incentivos_guardados)]
-            )
-        
-            if st.button("❌ Borrar incentivo seleccionado"):
-                index = int(index_borrar.split(".")[0]) - 1
-                st.session_state.incentivos_guardados.pop(index)
-                st.success("🗑️ Incentivo eliminado")
+    weekly_df['is_future'] = weekly_df['week_start'] > last_actual_date
+    weekly_df['proj_general'] = np.where(
+        weekly_df['adjustment_factor_SunMonTue'].notna(),
+        weekly_df['baseline_week_pred'] * (1.0 + weekly_df['adjustment_factor_SunMonTue']),
+        np.where(weekly_df['is_future'],
+                 weekly_df['baseline_week_pred'] * (1.0 + avg_all),
+                 weekly_df['baseline_week_pred'])
+    )
+    weekly_df['proj_neg'] = np.where(weekly_df['is_future'], weekly_df['baseline_week_pred'] * (1.0 + avg_neg), np.nan)
+    weekly_df['proj_pos'] = np.where(weekly_df['is_future'], weekly_df['baseline_week_pred'] * (1.0 + avg_pos), np.nan)
+
+    weekly_df = weekly_df[weekly_df['week_start'] <= final_date].reset_index(drop=True)
+    return weekly_df, daily_df
 
 
-            # Botón para borrar todos
-            if st.button("🗑️ Borrar todos los incentivos"):
-                st.session_state.incentivos_guardados = []
-                st.success("🧹 Incentivos eliminados")
-        
-        
-        # --- Footer ---
-        st.markdown("---")
-        st.markdown(
-            "<p style='text-align:center; color:#888888; font-size:16px;'>"
-            "© 2025 DXGY/Multiplier Calculator - Hecho con ❤️ por POC"
-            "</p>",
-            unsafe_allow_html=True
+# =========================
+# Streamlit App
+# =========================
+st.set_page_config(page_title="Forecast Dashboard", layout="wide")
+st.title("📊 Weekly Forecast with Adjustment & YoY Comparison")
+
+# Inputs
+uploaded_hist = st.file_uploader("Carga datos históricos (Date, TGMV)", type=["csv"])
+uploaded_yoy = st.file_uploader("Carga datos YoY y Plan (week_start, YoY, Plan)", type=["csv"])
+start_sunday = st.date_input("Fecha inicial (domingo)", pd.to_datetime("2025-01-05"))
+final_date = st.date_input("Fecha final de proyección", pd.to_datetime("2025-12-31"))
+
+if uploaded_hist:
+    df = pd.read_csv(uploaded_hist)
+    weekly_df, daily_df = weekly_forecast_with_adjustment_and_future(
+        df=df,
+        start_sunday=start_sunday,
+        final_date=final_date
+    )
+
+    st.subheader("Resultados semanales")
+    st.dataframe(weekly_df)
+
+    # Gráfico 1: Predicción + Intervalo
+    st.subheader("Predicción con ajuste Sun-Mon-Tue y promedios futuros")
+    fig, ax = plt.subplots(figsize=(11, 5))
+    ax.plot(weekly_df['week_start'], weekly_df['proj_general'], label="Proyección (promedio general)", color="blue")
+    if weekly_df['proj_neg'].notna().any():
+        ax.fill_between(
+            weekly_df['week_start'], weekly_df['proj_neg'], weekly_df['proj_pos'],
+            alpha=0.2, label="Rango negativo/positivo"
         )
+    if weekly_df['actual_week_total'].notna().any():
+        ax.scatter(weekly_df['week_start'], weekly_df['actual_week_total'], label="Real", color="black", s=20)
+    ax.legend(); ax.grid(True, linestyle="--", alpha=0.4)
+    st.pyplot(fig)
 
+    # Si hay datos YoY y Plan
+    if uploaded_yoy:
+        yoy_df = pd.read_csv(uploaded_yoy)
+        yoy_df['week_start'] = pd.to_datetime(yoy_df['week_start'])
+
+        merged = weekly_df.merge(yoy_df, on="week_start", how="left")
+
+        st.subheader("Comparación YoY / Plan")
+        fig2, ax2 = plt.subplots(figsize=(11, 5))
+        ax2.plot(merged['week_start'], merged['YoY'], label="YoY (año pasado)", linestyle="--", color="orange")
+        ax2.plot(merged['week_start'], merged['proj_general'], label="Predicción", color="blue")
+        ax2.plot(merged['week_start'], merged['Plan'], label="Plan", color="green")
+        if merged['actual_week_total'].notna().any():
+            ax2.scatter(merged['week_start'], merged['actual_week_total'], label="Real", color="black", s=20)
+        ax2.legend(); ax2.grid(True, linestyle="--", alpha=0.4)
+        st.pyplot(fig2)
+
+        # KPIs
+        st.subheader("📌 Indicadores clave")
+        merged['diff_vs_plan'] = merged['proj_general'] - merged['Plan']
+        merged['diff_vs_yoy'] = merged['proj_general'] - merged['YoY']
+        col1, col2 = st.columns(2)
+        col1.metric("Promedio diferencia vs Plan", f"{merged['diff_vs_plan'].mean():,.0f}")
+        col2.metric("Promedio diferencia vs YoY", f"{merged['diff_vs_yoy'].mean():,.0f}")
+
+        # Descargar resultados
+        st.download_button(
+            "📥 Descargar resultados en CSV",
+            merged.to_csv(index=False).encode("utf-8"),
+            file_name="weekly_forecast_results.csv",
+            mime="text/csv"
+        )
