@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 
+# --- Configuración de página ---
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
-
 st.title("📊 Dashboard de TGMV - Real vs Plan vs YoY")
 
 # --- Subida de archivos ---
@@ -12,7 +12,7 @@ file_current = st.sidebar.file_uploader("Sube df actual (CSV)", type="csv")
 file_plan = st.sidebar.file_uploader("Sube df plan (CSV)", type="csv")
 
 if file_current and file_plan:
-    # Cargar datos
+    # Cargar CSVs
     df = pd.read_csv(file_current)
     df_plan = pd.read_csv(file_plan)
 
@@ -20,21 +20,26 @@ if file_current and file_plan:
     df.columns = df.columns.str.strip().str.lower()
     df_plan.columns = df_plan.columns.str.strip().str.lower()
 
-    # Procesar df actual → agrupar por semana
+    # --- Procesar df actual ---
     df["date"] = pd.to_datetime(df["date"])
     df["week"] = df["date"].dt.isocalendar().week
 
     df_weekly = df.groupby("week", as_index=False).agg({"tgmv": "sum"})
     df_weekly.rename(columns={"tgmv": "real"}, inplace=True)
 
-    # Procesar plan
+    # --- Procesar plan ---
     df_plan.rename(columns={"tgmv 2024": "yoy", "tgmv plan": "plan"}, inplace=True)
 
-    # Merge por semana
+    # --- Merge por semana ---
     df_final = pd.merge(df_weekly, df_plan, on="week", how="inner")
 
-    # Calcular diferencia YoY
+    # 🔧 Convertir a numérico, manteniendo NaNs para mostrar huecos
+    for col in ["real", "yoy", "plan"]:
+        df_final[col] = pd.to_numeric(df_final[col], errors="coerce")
+
+    # --- Cálculos adicionales ---
     df_final["diff_yoy"] = df_final["real"] - df_final["yoy"]
+    df_final["cumplimiento"] = df_final["real"] / df_final["plan"] * 100
 
     st.subheader("📋 Vista previa de los datos procesados")
     st.dataframe(df_final.head())
@@ -43,10 +48,7 @@ if file_current and file_plan:
     st.subheader("📈 Evolución semanal: Real vs Plan vs YoY")
     chart1 = (
         alt.Chart(df_final)
-        .transform_fold(
-            ["real", "plan", "yoy"],
-            as_=["Métrica", "Valor"]
-        )
+        .transform_fold(["real", "plan", "yoy"], as_=["Métrica", "Valor"])
         .mark_line(point=True)
         .encode(
             x=alt.X("week:N", title="Semana"),
@@ -58,7 +60,7 @@ if file_current and file_plan:
     )
     st.altair_chart(chart1, use_container_width=True)
 
-    # --- Gráfico 2: Diferencia YoY ---
+    # --- Gráfico 2: Diferencia Real vs YoY ---
     st.subheader("📉 Diferencia Real vs YoY")
     chart2 = (
         alt.Chart(df_final)
@@ -73,10 +75,8 @@ if file_current and file_plan:
     )
     st.altair_chart(chart2, use_container_width=True)
 
-    # --- Gráfico 3: Comparación Real vs Plan ---
-    st.subheader("📊 Cumplimiento vs Plan")
-    df_final["cumplimiento"] = df_final["real"] / df_final["plan"] * 100
-
+    # --- Gráfico 3: Cumplimiento vs Plan ---
+    st.subheader("📊 Cumplimiento vs Plan (%)")
     chart3 = (
         alt.Chart(df_final)
         .mark_bar()
