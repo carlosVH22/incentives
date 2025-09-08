@@ -1,2 +1,5 @@
 streamlit
+prophet
+matplotlib
 pandas
+numpy
