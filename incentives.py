@@ -162,9 +162,8 @@ if plan_file and real_file:
     
     # Real en columnas
     real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.5).encode(
-        x=alt.X('week:O', title='Semana'),
-        y=alt.Y('real:Q', title='TGMV'),
-        axis=alt.Axis(format=','),
+        x=alt.X('week:O', title='Semana', axis=alt.Axis(format=',')),
+        y=alt.Y('real:Q', title='TGMV', axis=alt.Axis(format=',')),
         tooltip=['week','semana_lbl','real:Q'],
         color=alt.value('#1f77b4'),
         opacity=alt.condition(selection, alt.value(0.8), alt.value(0.7))
@@ -172,9 +171,8 @@ if plan_file and real_file:
     
     # Plan en barras grises
     plan_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8).encode(
-        x=alt.X('week:O'),
-        y='plan:Q',
-        axis=alt.Axis(format=','),
+        x=alt.X('week:O', axis=alt.Axis(format=',')),
+        y=alt.y('plan:Q', axis=alt.Axis(format=',')),
         tooltip=['week','semana_lbl','plan:Q'],
         color=alt.value('lightgray'),
         opacity=alt.condition(selection, alt.value(1), alt.value(0.5))
@@ -185,10 +183,9 @@ if plan_file and real_file:
         alt.Chart(df_weeks[df_weeks['is_future'].fillna(False)])
         .mark_area(opacity=0.5, color="lightblue")
         .encode(
-            x='week:O',
-            y='proj_neg:Q',
-            y2='proj_pos:Q',
-            axis=alt.Axis(format=','),
+            x=alt.X('week:O', axis=alt.Axis(format=',')),
+            y=alt.Y('proj_neg:Q', axis=alt.Axis(format=',')),
+            y2=alt.Y('proj_pos:Q', axis=alt.Axis(format=',')),
             tooltip=['week','semana_lbl','proj_neg:Q','proj_pos:Q']
         )
     )
@@ -197,18 +194,16 @@ if plan_file and real_file:
         alt.Chart(df_weeks)
         .mark_line(strokeDash=[5,5], color='red')
         .encode(
-            x='week:O',
-            y='proj_general:Q',
-            axis=alt.Axis(format=','),
+            x=alt.X('week:O', axis=alt.Axis(format=',')),
+            y=alt.Y('proj_general:Q', axis=alt.Axis(format=',')),
             tooltip=['week','semana_lbl','proj_general:Q']
         )
         +
         alt.Chart(df_weeks)
         .mark_point(filled=True, size=15, stroke='red', color='red')
         .encode(
-            x='week:O',
-            y='proj_general:Q',
-            axis=alt.Axis(format=','),
+            x=alt.X('week:O', axis=alt.Axis(format=',')),
+            y=alt.Y('proj_general:Q', , axis=alt.Axis(format=',')),
             tooltip=['week','semana_lbl','proj_general:Q']
         )
     )
