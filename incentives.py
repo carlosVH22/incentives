@@ -6,6 +6,9 @@ from prophet import Prophet
 import requests
 import io
 
+st.set_page_config(page_title="Dashboard Incentivos", layout="wide") 
+st.title("📊 Dashboard de TGMV: Real vs Plan vs Predicción")
+
 # URLs de los CSVs
 PLAN_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_plan%20(1).csv"
 REAL_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_tgmv.csv"
