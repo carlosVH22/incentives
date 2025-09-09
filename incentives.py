@@ -148,7 +148,7 @@ if plan_file and real_file:
     selection = alt.selection_point(fields=['week'])
     
     # Real en columnas
-    real_chart = alt.Chart(df_weeks).mark_bar().encode(
+    real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8).encode(
         x=alt.X('week:O', title='Semana'),
         y=alt.Y('real:Q', title='TGMV'),
         tooltip=['week','semana_lbl','real:Q'],
@@ -157,14 +157,14 @@ if plan_file and real_file:
     )
     
     # Plan en área gris
-    plan_chart = alt.Chart(df_weeks).mark_area(opacity=0.3, color='lightgray').encode(
+    plan_chart = alt.Chart(df_weeks).mark_area(opacity=0.5, color='lightgray').encode(
         x='week:O',
         y='plan:Q',
         tooltip=['week','semana_lbl','plan:Q']
     )
     
     # Predicción en línea punteada
-    pred_chart = alt.Chart(df_weeks).mark_line(point=True, strokeDash=[5,5], color='orange').encode(
+    pred_chart = alt.Chart(df_weeks).mark_line(point=True, strokeDash=[5,5], color='red').encode(
         x='week:O',
         y='proj_general:Q',
         tooltip=['week','semana_lbl','proj_general:Q']
