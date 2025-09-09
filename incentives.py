@@ -160,24 +160,46 @@ if plan_file and real_file:
 
     # --- Gráfico Cumplimiento vs Plan ---
     st.subheader("📊 Cumplimiento vs Plan (%) (real y futuro)")
-    df_weeks['cumplimiento_display'] = np.where(df_weeks['is_future'], df_weeks['cumplimiento_future'], df_weeks['cumplimiento'])
+    
+    # Crear columna de visualización según si es futuro o pasado
+    df_weeks['cumplimiento_display'] = np.where(
+        df_weeks['is_future'],
+        df_weeks['cumplimiento_future'],
+        df_weeks['cumplimiento']
+    )
+    
+    # Selección interactiva
     selection2 = alt.selection_point(fields=['week'])
-    chart2 = (alt.Chart(df_weeks)
-              .mark_bar()
-              .encode(x=alt.X('week:O',title='Semana'),
-                      y=alt.Y('cumplimiento_display:Q',title='% Cumplimiento Plan'),
-                      color=alt.condition(
-                            "datum.is_future",
-                            alt.value("lightblue"),  # predicción futura
-                            alt.condition("datum.cumplimiento_display >= 100",
-                                          alt.value("green"),
-                                          alt.value("orange"))
-                      ),
-                      tooltip=['week','semana_lbl','plan','real','proj_general','cumplimiento_display:Q'],
-                      opacity=alt.condition(selection2, alt.value(1), alt.value(0.7)))
-              .add_params(selection2)
-              .interactive().properties(height=350,width=850))
-    st.altair_chart(chart2,use_container_width=True)
-
-else:
-    st.warning("Sube ambos CSV para continuar.")
+    
+    # Chart Altair
+    chart2 = (
+        alt.Chart(df_weeks)
+        .mark_bar()
+        .encode(
+            x=alt.X('week:O', title='Semana'),
+            y=alt.Y('cumplimiento_display:Q', title='% Cumplimiento Plan'),
+            color=alt.condition(
+                "datum.is_future",  # Si es futura -> color claro
+                alt.value("lightblue"),
+                alt.condition(
+                    "datum.cumplimiento_display >= 100",  # Si cumple >=100 -> verde
+                    alt.value("green"),
+                    alt.value("orange")  # Si no -> naranja
+                )
+            ),
+            tooltip=[
+                alt.Tooltip('week:O', title='Semana'),
+                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
+                alt.Tooltip('plan:Q', title='Plan', format=','),
+                alt.Tooltip('real:Q', title='Real', format=','),
+                alt.Tooltip('proj_general:Q', title='Proyección', format=','),
+                alt.Tooltip('cumplimiento_display:Q', title='% Cumplimiento', format='.1f')
+            ],
+            opacity=alt.condition(selection2, alt.value(1), alt.value(0.7))
+        )
+        .add_params(selection2)
+        .interactive()
+        .properties(height=350, width=850)
+    )
+    
+    st.altair_chart(chart2, use_container_width=True)
