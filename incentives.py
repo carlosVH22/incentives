@@ -4,6 +4,7 @@ import numpy as np
 import altair as alt
 from prophet import Prophet
 
+pd.options.display.float_format = '{:,.2f}'.format
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
 st.title("📊 Dashboard de TGMV: Real vs Plan vs Predicción")
 
