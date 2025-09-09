@@ -5,7 +5,7 @@ import altair as alt
 from prophet import Prophet
 
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
-st.title("📊 Dashboard de TGMV: Real vs Plan vs Predicción")
+st.title("📊 Dashboard TGMV Predicciones")
 
 # --- Sidebar para CSVs ---
 st.sidebar.header("Carga los archivos CSV")
@@ -140,22 +140,21 @@ if plan_file and real_file:
     df_weeks['cumplimiento_future'] = df_weeks['proj_general']/df_weeks['plan']*100
     df_weeks['semana_lbl'] = df_weeks.apply(lambda x: f"Semana {x['week']} ({x['week_start'].date()} a {x['week_end'].date()})", axis=1)
 
+    st.subheader("📊 Vista semanal (plan, real y predicción)")
     st.dataframe(
     df_weeks.style.format({
-        "plan": "{:,}",                  # separador miles, sin decimales
-        "real": "{:,}",
-        "proj_general": "{:,}",
+        "plan": "{:,.1f}",                  # separador miles, sin decimales
+        "real": "{:,.1f}",
+        "proj_general": "{:,.1f}",
         "proj_neg": "{:,}",
         "proj_pos": "{:,}",
-        "diff_pred": "{:,}",
+        "diff_pred": "{:,.1f}",
         "cumplimiento": "{:,.1f}",       # 1 decimal
         "cumplimiento_future": "{:,.1f}" # 1 decimal
         })
     )
-    st.subheader("📊 Vista semanal (plan, real y predicción)")
-    st.dataframe(df_weeks.head(10))
 
-
+    st.subheader("📊 Gráfico Real vs Plan vs Predicción")
     # --- Gráfico Real vs Plan vs Predicción ---
     selection = alt.selection_point(fields=['week'])
     
