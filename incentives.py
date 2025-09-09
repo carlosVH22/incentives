@@ -160,80 +160,59 @@ if plan_file and real_file:
     
     selection = alt.selection_point(fields=['week'])
     
+    # Filtrar semanas futuras
+    df_future = df_weeks[df_weeks['is_future'].fillna(False)]
+    
     # Real en columnas
     real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.5).encode(
         x='week:O',
         y=alt.Y('real:Q', title='TGMV', axis=alt.Axis(format=',')),
-        tooltip=[
-            alt.Tooltip('week:O', title='Semana'),
-            alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-            alt.Tooltip('real:Q', title='Real', format=',')
-        ],
+        tooltip=['week','semana_lbl','real:Q'],
         color=alt.value('#1f77b4'),
-        opacity=alt.condition(selection, alt.value(0.8), alt.value(0.7))
+        opacity=alt.condition(selection, alt.value(0.7), alt.value(0.5))
     )
     
     # Plan en barras grises
     plan_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8).encode(
         x='week:O',
         y=alt.Y('plan:Q', axis=alt.Axis(format=',')),
-        tooltip=[
-            alt.Tooltip('week:O', title='Semana'),
-            alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-            alt.Tooltip('plan:Q', title='Plan', format=',')
-        ],
+        tooltip=['week','semana_lbl','plan:Q'],
         color=alt.value('lightgray'),
         opacity=alt.condition(selection, alt.value(1), alt.value(0.5))
     )
     
     # Área sombreada optimista/pesimista (solo semanas futuras)
-    band_chart = (
-        alt.Chart(df_weeks[df_weeks['is_future'].fillna(False)])
-        .mark_area(opacity=0.25, color="lightblue")
-        .encode(
-            x='week:O',
-            y=alt.Y('proj_neg:Q', axis=alt.Axis(format=',')),
-            y2=alt.Y('proj_pos:Q'),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-                alt.Tooltip('proj_neg:Q', title='Pesimista', format=','),
-                alt.Tooltip('proj_pos:Q', title='Optimista', format=',')
-            ]
-        )
+    band_chart = alt.Chart(df_future).mark_area(opacity=0.5, color="lightblue").encode(
+        x='week:O',
+        y=alt.Y('proj_neg:Q', axis=alt.Axis(format=',')),
+        y2='proj_pos:Q',
+        tooltip=['week','semana_lbl','proj_neg:Q','proj_pos:Q']
     )
     
-    # Línea de predicción y puntos rellenos en rojo
-    pred_chart = (
-        alt.Chart(df_weeks)
-        .mark_line(strokeDash=[5,5], color='red')
-        .encode(
+    # Predicción: línea punteada + puntos rellenos
+    pred_chart = alt.layer(
+        alt.Chart(df_weeks).mark_line(strokeDash=[5,5], color='red').encode(
             x='week:O',
             y=alt.Y('proj_general:Q', axis=alt.Axis(format=',')),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-                alt.Tooltip('proj_general:Q', title='Proyección', format=',')
-            ]
-        )
-        +
-        alt.Chart(df_weeks)
-        .mark_point(filled=True, size=15, stroke='red', color='red')
-        .encode(
+            tooltip=['week','semana_lbl','proj_general:Q']
+        ),
+        alt.Chart(df_weeks).mark_point(filled=True, size=15, stroke='red', color='red').encode(
             x='week:O',
             y='proj_general:Q',
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-                alt.Tooltip('proj_general:Q', title='Proyección', format=',')
-            ]
+            tooltip=['week','semana_lbl','proj_general:Q']
         )
     )
     
-    # Combinar todos los gráficos
-    chart = (plan_chart + real_chart + band_chart + pred_chart).add_params(selection).interactive().properties(height=400, width=850)
+    # Combinar todos los charts
+    chart = alt.layer(
+        plan_chart,
+        real_chart,
+        band_chart,
+        pred_chart
+    ).add_params(selection).interactive().properties(height=400, width=850)
     
     st.altair_chart(chart, use_container_width=True)
+
 
 
     
