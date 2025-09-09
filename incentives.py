@@ -94,6 +94,15 @@ if plan_file and real_file:
     # Identificar semanas futuras (sin datos reales)
     df_weeks['is_future'] = df_weeks['real'].isna()
 
+    # --- CALCULAR MÉTRICAS ---
+    df_weeks['diff_yoy'] = np.where(df_weeks['real'].notna(),
+                                    df_weeks['real'] - df_weeks['yoy'],
+                                    df_weeks['yhat'] - df_weeks['yoy'])
+    
+    df_weeks['cumplimiento'] = np.where(df_weeks['real'].notna(),
+                                        df_weeks['real'] / df_weeks['plan'] * 100,
+                                        df_weeks['yhat'] / df_weeks['plan'] * 100)
+
     # --- VISTA PREVIA ---
     st.subheader("📋 Vista previa")
     st.dataframe(df_weeks[['week','week_start','week_end','plan','real','yoy','yhat','diff_yoy','cumplimiento']].head(20))
