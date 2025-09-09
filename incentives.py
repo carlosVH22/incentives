@@ -7,10 +7,31 @@ from prophet import Prophet
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
 st.title("📊 Dashboard TGMV Predicciones")
 
+# --- URLs de GitHub ---
+PLAN_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_plan%20(1).csv"
+REAL_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_tgmv.csv"
+
 # --- Sidebar para CSVs ---
-st.sidebar.header("Carga los archivos CSV")
+st.sidebar.header("Carga los archivos CSV (opcional)")
 plan_file = st.sidebar.file_uploader("Sube el plan diario 2025 (date, plan)", type="csv")
 real_file = st.sidebar.file_uploader("Sube los datos reales (date, tgmv), 2024 y 2025", type="csv")
+
+# --- Leer CSVs ---
+if plan_file is not None:
+    df_plan = pd.read_csv(plan_file)
+else:
+    df_plan = pd.read_csv(PLAN_URL)
+
+if real_file is not None:
+    df_real = pd.read_csv(real_file)
+else:
+    df_real = pd.read_csv(REAL_URL)
+
+st.write("Plan diario 2025:")
+st.dataframe(df_plan.head())
+
+st.write("Datos reales:")
+st.dataframe(df_real.head())
 
 # --- Función semanas custom ---
 def assign_custom_weeks(df):
