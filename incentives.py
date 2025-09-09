@@ -203,7 +203,7 @@ if plan_file and real_file:
         .mark_point(filled=True, size=15, stroke='red', color='red')
         .encode(
             x=alt.X('week:O', axis=alt.Axis(format=',')),
-            y=alt.Y('proj_general:Q', , axis=alt.Axis(format=',')),
+            y=alt.Y('proj_general:Q', axis=alt.Axis(format=',')),
             tooltip=['week','semana_lbl','proj_general:Q']
         )
     )
