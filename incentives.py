@@ -1,194 +1,170 @@
-import streamlit as st
+# ==========================
+# Prophet integrado
+# ==========================
+from prophet import Prophet
 import pandas as pd
 import numpy as np
-import altair as alt
-from prophet import Prophet
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
-st.title("📊 Dashboard de TGMV: Real vs Plan vs Predicción (semanas custom)")
-
-st.sidebar.header("Carga los archivos CSV")
-plan_file = st.sidebar.file_uploader("Sube el plan diario 2025 (date, plan)", type="csv")
-real_file = st.sidebar.file_uploader("Sube los datos reales (date, tgmv), debe contener 2024 y 2025", type="csv")
-n_pred_weeks = st.sidebar.slider("Semanas a predecir", 2, 20, 6)
-
-# --- FUNCION DE ASIGNACION DE SEMANAS CUSTOM ---
-def assign_custom_weeks(df):
+def weekly_forecast_with_adjustment_and_future(
+    df,
+    start_sunday='2025-01-05',
+    end_sunday=None,
+    final_date='2025-12-31',
+    plot=True,
+    model_kwargs=None
+):
+    """
+    df: DataFrame con columnas ['Date', 'TGMV'] en frecuencia diaria.
+    Ajusta semanalmente usando el factor Sun-Mon-Tue cuando existen reales.
+    """
     df = df.copy()
-    df['date'] = pd.to_datetime(df['date'])
-    year = df['date'].dt.year.iloc[0]
-    all_days = pd.date_range(f'{year}-01-01', f'{year}-12-31')
-    start = all_days[0]
-    while start.weekday() != 5 and start <= all_days[-1]:  # primer sábado
-        start += pd.Timedelta(days=1)
-    week_ends = [start]
-    while week_ends[-1] + pd.Timedelta(days=1) <= all_days[-1]:
-        next_end = week_ends[-1] + pd.Timedelta(days=7)
-        if next_end > all_days[-1]:
-            next_end = all_days[-1]
-        week_ends.append(next_end)
-    week_id = 1
-    curr_start = all_days[0]
-    for w_end in week_ends:
-        mask = (df['date'] >= curr_start) & (df['date'] <= w_end)
-        df.loc[mask, 'week'] = week_id
-        df.loc[mask, 'week_start'] = curr_start
-        df.loc[mask, 'week_end'] = w_end
-        curr_start = w_end + pd.Timedelta(days=1)
-        week_id += 1
-    df['week'] = df['week'].astype(int)
-    return df
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df.sort_values('Date')
 
-if plan_file and real_file:
-    # --- LEE Y PROCESA EL PLAN ---
-    df_plan = pd.read_csv(plan_file)
-    df_plan.columns = df_plan.columns.str.strip().str.lower()
-    df_plan['date'] = pd.to_datetime(df_plan['date'])
-    df_plan = assign_custom_weeks(df_plan)
-    plan_weekly = df_plan.groupby(['week','week_start','week_end'])['plan'].sum().reset_index()
+    if end_sunday is None:
+        end_sunday = df['Date'].max()
+    start_sunday = pd.Timestamp(start_sunday)
+    end_sunday = pd.Timestamp(end_sunday)
+    final_date = pd.Timestamp(final_date)
 
-    # --- LEE Y PROCESA LOS DATOS REALES ---
-    df_real = pd.read_csv(real_file)
-    df_real.columns = df_real.columns.str.strip().str.lower()
-    df_real['date'] = pd.to_datetime(df_real['date'])
+    horizon_end = max(end_sunday, final_date)
+    sundays = pd.date_range(start=start_sunday, end=horizon_end, freq='W-SUN')
 
-    # Real 2025
-    real_2025 = df_real[df_real['date'].dt.year == 2025]
-    real_2025 = assign_custom_weeks(real_2025)
-    real_2025w = real_2025.groupby(['week','week_start','week_end'])['tgmv'].sum().reset_index()
-    real_2025w.rename(columns={'tgmv':'real'}, inplace=True)
+    if model_kwargs is None:
+        model_kwargs = dict(
+            seasonality_mode='additive',
+            yearly_seasonality=True,
+            changepoint_prior_scale=0.001,
+            seasonality_prior_scale=4,
+            n_changepoints=50
+        )
 
-    # Real 2024 para YoY
-    real_2024 = df_real[df_real['date'].dt.year == 2024]
-    if len(real_2024) > 0:
-        real_2024 = assign_custom_weeks(real_2024)
-        real_2024w = real_2024.groupby(['week','week_start','week_end'])['tgmv'].sum().reset_index()
-        real_2024w.rename(columns={'tgmv':'yoy'}, inplace=True)
+    weekly_rows = []
+    daily_preds_list = []
+    last_actual_date = df['Date'].max()
+
+    for s in sundays:
+        train = (
+            df[df['Date'] < s]
+            .rename(columns={'Date': 'ds', 'TGMV': 'y'})[['ds', 'y']]
+            .sort_values('ds')
+            .dropna()
+        )
+        if len(train) < 2:
+            continue
+
+        week_end = s + pd.Timedelta(days=6)
+
+        model = Prophet(**model_kwargs)
+        model.fit(train)
+
+        future = pd.DataFrame({'ds': pd.date_range(start=s, end=week_end, freq='D')})
+        forecast = model.predict(future)[['ds', 'yhat']].copy()
+
+        baseline_week_pred = forecast['yhat'].sum()
+
+        # Ajuste Sun-Mon-Tue
+        st_end_for_factor = s + pd.Timedelta(days=2)
+        actual_st = df[(df['Date'] >= s) & (df['Date'] <= st_end_for_factor)][['Date', 'TGMV']].copy()
+        actual_st = actual_st.rename(columns={'Date': 'ds', 'TGMV': 'actual'})
+
+        cmp_df = forecast.merge(actual_st, on='ds', how='left')
+        cmp_df['pct_diff'] = np.where(
+            (~cmp_df['actual'].isna()) & (cmp_df['yhat'] != 0),
+            (cmp_df['actual'] / cmp_df['yhat']) - 1.0,
+            np.nan
+        )
+        cmp_df = cmp_df[cmp_df['ds'] <= st_end_for_factor]
+
+        n_days_factor = int(cmp_df['pct_diff'].notna().sum())
+        factor = cmp_df['pct_diff'].mean() if n_days_factor > 0 else np.nan
+
+        adjusted_week_pred = baseline_week_pred * (1.0 + factor) if pd.notna(factor) else baseline_week_pred
+
+        week_actual = df[(df['Date'] >= s) & (df['Date'] <= week_end)]['TGMV']
+        actual_week_total = week_actual.sum() if len(week_actual) == 7 else np.nan
+
+        dtmp = forecast[['ds', 'yhat']].copy()
+        dtmp['week_start'] = s
+        dtmp.rename(columns={'yhat': 'pred'}, inplace=True)
+        daily_preds_list.append(dtmp)
+
+        weekly_rows.append({
+            'week_start': s,
+            'week_end': week_end,
+            'baseline_week_pred': baseline_week_pred,
+            'adjustment_factor_SunMonTue': factor,
+            'n_days_used_for_factor': n_days_factor,
+            'adjusted_week_pred_hist': adjusted_week_pred,
+            'actual_week_total': actual_week_total
+        })
+
+    weekly_df = pd.DataFrame(weekly_rows).sort_values('week_start').reset_index(drop=True)
+    daily_df = pd.concat(daily_preds_list, ignore_index=True) if daily_preds_list else pd.DataFrame()
+
+    if weekly_df.empty:
+        return weekly_df, daily_df
+
+    valid_factors = weekly_df['adjustment_factor_SunMonTue'].dropna()
+    if len(valid_factors) > 0:
+        avg_all = valid_factors.mean()
+        avg_neg = valid_factors[valid_factors < 0].mean() if (valid_factors < 0).any() else avg_all
+        avg_pos = valid_factors[valid_factors > 0].mean() if (valid_factors > 0).any() else avg_all
     else:
-        real_2024w = pd.DataFrame(columns=['week','week_start','week_end','yoy'])
+        avg_all = avg_neg = avg_pos = 0.0
 
-    # --- Prophet para predecir ---
-    df_prophet = real_2025[['date','tgmv']].dropna()
-    df_prophet = df_prophet.rename(columns={'date':'ds','tgmv':'y'})
-    
-    if len(df_prophet) > 2:  # evita fallo si hay pocos datos
-        model = Prophet()
-        model.fit(df_prophet)
-        future = model.make_future_dataframe(periods=n_pred_weeks*7)
-        forecast = model.predict(future)
-    
-        forecast = forecast[['ds','yhat']].rename(columns={'ds':'date'})
-        forecast['date'] = pd.to_datetime(forecast['date'])
-        forecast = assign_custom_weeks(forecast)
-        forecast_weekly = forecast.groupby(['week','week_start','week_end'])['yhat'].sum().reset_index()
-    else:
-        forecast_weekly = pd.DataFrame(columns=['week','week_start','week_end','yhat'])
+    weekly_df['is_future'] = weekly_df['week_start'] > last_actual_date
 
-
-    # --- Merge todo ---
-    df_weeks = plan_weekly.merge(real_2025w, on=['week','week_start','week_end'], how='left')
-    df_weeks = df_weeks.merge(real_2024w[['week','yoy']], on='week', how='left')
-    df_weeks = df_weeks.merge(forecast_weekly[['week','yhat']], on='week', how='left')
-
-    # Métricas
-    df_weeks['diff_yoy'] = df_weeks['real'] - df_weeks['yoy']
-    df_weeks['cumplimiento'] = df_weeks['real'] / df_weeks['plan'] * 100
-
-    # Futuro/pasado
-    df_weeks['is_future'] = df_weeks['real'].isna()
-    df_weeks['diff_display'] = np.where(df_weeks['is_future'],
-                                        df_weeks['yhat']-df_weeks['yoy'],
-                                        df_weeks['diff_yoy'])
-    df_weeks['cumplimiento_display'] = np.where(df_weeks['is_future'],
-                                                df_weeks['yhat']/df_weeks['plan']*100,
-                                                df_weeks['cumplimiento'])
-
-    # Colores para diff
-    def color_diff(row):
-        if pd.isna(row['diff_display']):
-            return "gray"
-        if row['is_future']:
-            return "lightgreen" if row['diff_display'] > 0 else "lightcoral"
-        else:
-            return "green" if row['diff_display'] > 0 else "red"
-    df_weeks['color_diff'] = df_weeks.apply(color_diff, axis=1)
-
-    # Colores para cumplimiento
-    def color_cump(row):
-        if pd.isna(row['cumplimiento_display']):
-            return "gray"
-        if row['is_future']:
-            return "lightgreen" if row['cumplimiento_display'] >= 100 else "lightsalmon"
-        else:
-            return "green" if row['cumplimiento_display'] >= 100 else "orange"
-    df_weeks['color_cump'] = df_weeks.apply(color_cump, axis=1)
-
-    # Etiquetas
-    df_weeks['semana_lbl'] = df_weeks.apply(
-        lambda x: f"Semana {x['week']} ({x['week_start'].date()} a {x['week_end'].date()})", axis=1
-    )
-
-    # --- Vista previa ---
-    st.subheader(":mag: Vista previa de las semanas agregadas")
-    st.dataframe(df_weeks[['week','week_start','week_end','plan','real','yoy','yhat','diff_display','cumplimiento_display']].head(20))
-
-    # --- Gráfico 1: Plan vs Real vs Predicción ---
-    st.subheader("📈 Evolución semanal Plan vs Real vs Predicción (interactivo)")
-    melted = df_weeks.melt(
-        id_vars=['week','semana_lbl','is_future'],
-        value_vars=['real','plan','yhat'],
-        var_name='Métrica', value_name='Valor'
-    )
-    chart1 = (
-        alt.Chart(melted)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X("week:O", title="Semana"),
-            y=alt.Y("Valor:Q", title="TGMV"),
-            color=alt.Color('Métrica:N', legend=alt.Legend(title="Métrica")),
-            tooltip=['semana_lbl','Métrica','Valor'],
-            strokeDash=alt.condition("datum.Métrica == 'yhat'", alt.value([5,5]), alt.value([0]))
+    weekly_df['proj_general'] = np.where(
+        weekly_df['adjustment_factor_SunMonTue'].notna(),
+        weekly_df['baseline_week_pred'] * (1.0 + weekly_df['adjustment_factor_SunMonTue']),
+        np.where(
+            weekly_df['is_future'],
+            weekly_df['baseline_week_pred'] * (1.0 + avg_all),
+            weekly_df['baseline_week_pred']
         )
-        .properties(height=400, width=850)
     )
-    st.altair_chart(chart1, use_container_width=True)
 
-    # --- Gráfico 2: Diferencia Real/Pred vs YoY ---
-    st.subheader("📉 Diferencia Real/Pred vs YoY")
-    chart2 = (
-        alt.Chart(df_weeks)
-        .mark_bar()
-        .encode(
-            x=alt.X("week:O", title="Semana"),
-            y=alt.Y("diff_display:Q", title="Diferencia"),
-            color=alt.Color('color_diff:N', legend=None),
-            tooltip=['semana_lbl','real','yoy','yhat','diff_display']
-        )
-        .properties(height=350, width=850)
+    weekly_df['proj_neg'] = np.where(
+        weekly_df['is_future'],
+        weekly_df['baseline_week_pred'] * (1.0 + avg_neg),
+        np.nan
     )
-    st.altair_chart(chart2, use_container_width=True)
+    weekly_df['proj_pos'] = np.where(
+        weekly_df['is_future'],
+        weekly_df['baseline_week_pred'] * (1.0 + avg_pos),
+        np.nan
+    )
 
-    # --- Gráfico 3: Cumplimiento vs Plan ---
-    st.subheader("📊 Cumplimiento vs Plan (%)")
-    chart3 = (
-        alt.Chart(df_weeks)
-        .mark_bar()
-        .encode(
-            x=alt.X("week:O", title="Semana"),
-            y=alt.Y("cumplimiento_display:Q", title="% Cumplimiento"),
-            color=alt.Color('color_cump:N', legend=None),
-            tooltip=['semana_lbl','real','plan','yhat','cumplimiento_display']
-        )
-        .properties(height=350, width=850)
-    )
-    st.altair_chart(chart3, use_container_width=True)
+    if horizon_end > final_date:
+        weekly_df = weekly_df[weekly_df['week_start'] <= final_date].reset_index(drop=True)
 
-    # Botón descarga
-    st.download_button(
-        "Descargar datos semanales",
-        df_weeks.to_csv(index=False).encode('utf-8'),
-        file_name="datos_dashboard_semanal.csv",
-        mime="text/csv"
-    )
-else:
-    st.warning("Por favor sube ambos archivos CSV para continuar.")
+    if plot:
+        fig, ax = plt.subplots(figsize=(11, 5))
+        ax.plot(weekly_df['week_start'], weekly_df['proj_general'], label='Proyección (promedio general)')
+        future_mask = weekly_df['is_future']
+        if future_mask.any():
+            ax.fill_between(
+                weekly_df.loc[future_mask, 'week_start'],
+                weekly_df.loc[future_mask, 'proj_neg'],
+                weekly_df.loc[future_mask, 'proj_pos'],
+                alpha=0.25,
+                label='Rango (neg ↔ pos)'
+            )
+        if weekly_df['actual_week_total'].notna().any():
+            ax.scatter(
+                weekly_df.loc[weekly_df['actual_week_total'].notna(), 'week_start'],
+                weekly_df.loc[weekly_df['actual_week_total'].notna(), 'actual_week_total'],
+                label='Real',
+                s=20
+            )
+        ax.set_title('Proyección semanal con ajuste Sun–Mon–Tue')
+        ax.set_xlabel('Semana (inicio)')
+        ax.set_ylabel('TGMV semanal')
+        ax.legend()
+        ax.grid(True, linestyle='--', alpha=0.4)
+        plt.tight_layout()
+        plt.show()
+
+    return weekly_df, daily_df
