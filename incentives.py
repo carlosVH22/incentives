@@ -4,7 +4,6 @@ import numpy as np
 import altair as alt
 from prophet import Prophet
 
-pd.options.display.float_format = '{:,.2f}'.format
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
 st.title("📊 Dashboard de TGMV: Real vs Plan vs Predicción")
 
@@ -131,6 +130,7 @@ if plan_file and real_file:
     weekly_prophet, daily_prophet = weekly_forecast_with_adjustment_and_future(df_real)
 
     # --- Agregamos columnas para comparación ---
+    st.dataframe(df_weeks.style.format("{:,.2f}"))
     real_2025 = df_real[df_real['date'].dt.year==2025].copy()
     real_2025 = assign_custom_weeks(real_2025)
     real_2025w = real_2025.groupby(['week','week_start','week_end'])['tgmv'].sum().reset_index().rename(columns={'tgmv':'real'})
