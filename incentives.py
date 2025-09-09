@@ -434,31 +434,44 @@ if plan_file and real_file:
         real_2024_semana = df_yoy[df_yoy['week']==week_number]['real_2024'].iloc[0]
         yoy_est = (estimado_semana_completa / real_2024_semana - 1) * 100
 
-    st.subheader("📈 Estimación Cumplimiento al Plan - Semana en curso")
+    # --- Cards con columnas para estimaciones de la semana en curso ---
+    if not current_week.empty:
+        col1, col2 = st.columns(2)
     
-    est_chart = alt.Chart(pd.DataFrame({
-        'Semana':[f"Semana {week_number}"],
-        'Cumplimiento Estimado':[cumplimiento_est]
-    })).mark_bar(color='purple', opacity=0.7).encode(
-        x='Semana:N',
-        y=alt.Y('Cumplimiento Estimado:Q', title='% Cumplimiento Plan'),
-        tooltip=[alt.Tooltip('Cumplimiento Estimado:Q', format='.1f')]
-    ).properties(height=300, width=400)
+        with col1:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">📈 Estimación Cumplimiento al Plan</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-subtitle">Semana en curso basada en tendencia diaria</div>', unsafe_allow_html=True)
+            
+            est_chart = alt.Chart(pd.DataFrame({
+                'Semana':[f"Semana {week_number}"],
+                'Cumplimiento Estimado':[cumplimiento_est]
+            })).mark_bar(color='#8A2BE2', opacity=0.8).encode(
+                x='Semana:N',
+                y=alt.Y('Cumplimiento Estimado:Q', title='% Cumplimiento Plan'),
+                tooltip=[alt.Tooltip('Cumplimiento Estimado:Q', format='.1f')]
+            ).properties(height=300, width=400)
+            
+            st.altair_chart(est_chart, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
     
-    st.altair_chart(est_chart, use_container_width=True)
+        with col2:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">📈 Estimación Crecimiento YoY</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-subtitle">Semana en curso basada en tendencia diaria</div>', unsafe_allow_html=True)
+            
+            yoy_chart = alt.Chart(pd.DataFrame({
+                'Semana':[f"Semana {week_number}"],
+                'YoY Estimado':[yoy_est]
+            })).mark_bar(color='#20B2AA', opacity=0.8).encode(
+                x='Semana:N',
+                y=alt.Y('YoY Estimado:Q', title='% Crecimiento YoY'),
+                tooltip=[alt.Tooltip('YoY Estimado:Q', format='.1f')]
+            ).properties(height=300, width=400)
+            
+            st.altair_chart(yoy_chart, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-    st.subheader("📈 Estimación Crecimiento YoY - Semana en curso")
-    
-    yoy_chart = alt.Chart(pd.DataFrame({
-        'Semana':[f"Semana {week_number}"],
-        'YoY Estimado':[yoy_est]
-    })).mark_bar(color='teal', opacity=0.7).encode(
-        x='Semana:N',
-        y=alt.Y('YoY Estimado:Q', title='% Crecimiento YoY'),
-        tooltip=[alt.Tooltip('YoY Estimado:Q', format='.1f')]
-    ).properties(height=300, width=400)
-    
-    st.altair_chart(yoy_chart, use_container_width=True)
 
 
 
