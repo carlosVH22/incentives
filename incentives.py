@@ -403,4 +403,63 @@ if plan_file and real_file:
 
 
 
+    import datetime
+
+    # Fecha de hoy
+    today = pd.Timestamp.today()
+    
+    # Detectar semana en curso
+    current_week = df_weeks[(df_weeks['week_start'] <= today) & (df_weeks['week_end'] >= today)]
+    if not current_week.empty:
+        week_start = current_week['week_start'].iloc[0]
+        week_end = current_week['week_end'].iloc[0]
+        week_number = current_week['week'].iloc[0]
+    
+        # Datos diarios de la semana actual
+        week_days = df_real[(df_real['date'] >= week_start) & (df_real['date'] <= today)]
+    
+        parcial_real = week_days['TGMV'].sum()
+        dias_completados = len(week_days)
+        total_dias_semana = (week_end - week_start).days + 1
+    
+        # Estimación para la semana completa
+        tendencia_diaria = parcial_real / dias_completados if dias_completados > 0 else 0
+        estimado_semana_completa = tendencia_diaria * total_dias_semana
+    
+        # Plan de la semana
+        plan_semana = current_week['plan'].iloc[0]
+        cumplimiento_est = estimado_semana_completa / plan_semana * 100
+    
+        # YoY estimado
+        real_2024_semana = df_yoy[df_yoy['week']==week_number]['real_2024'].iloc[0]
+        yoy_est = (estimado_semana_completa / real_2024_semana - 1) * 100
+
+    st.subheader("📈 Estimación Cumplimiento al Plan - Semana en curso")
+    
+    est_chart = alt.Chart(pd.DataFrame({
+        'Semana':[f"Semana {week_number}"],
+        'Cumplimiento Estimado':[cumplimiento_est]
+    })).mark_bar(color='purple', opacity=0.7).encode(
+        x='Semana:N',
+        y=alt.Y('Cumplimiento Estimado:Q', title='% Cumplimiento Plan'),
+        tooltip=[alt.Tooltip('Cumplimiento Estimado:Q', format='.1f')]
+    ).properties(height=300, width=400)
+    
+    st.altair_chart(est_chart, use_container_width=True)
+
+    st.subheader("📈 Estimación Crecimiento YoY - Semana en curso")
+    
+    yoy_chart = alt.Chart(pd.DataFrame({
+        'Semana':[f"Semana {week_number}"],
+        'YoY Estimado':[yoy_est]
+    })).mark_bar(color='teal', opacity=0.7).encode(
+        x='Semana:N',
+        y=alt.Y('YoY Estimado:Q', title='% Crecimiento YoY'),
+        tooltip=[alt.Tooltip('YoY Estimado:Q', format='.1f')]
+    ).properties(height=300, width=400)
+    
+    st.altair_chart(yoy_chart, use_container_width=True)
+
+
+
 
