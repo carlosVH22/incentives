@@ -252,7 +252,7 @@ if plan_file and real_file:
     
     df_yoy['color_yoy'] = df_yoy.apply(color_rule_yoy, axis=1)
 
-    st.subheader("📊 Cumplimiento YoY 2025 vs 2024 (%)")
+    st.subheader("📊 YoY 2025 vs 2024 Real y Predicho (%)")
     
     selection3 = alt.selection_point(fields=['week'])
     
