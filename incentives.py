@@ -168,6 +168,17 @@ if plan_file and real_file:
         df_weeks['cumplimiento']
     )
     
+    # Columna con color según reglas
+    def color_rule(row):
+        if row['is_future']:
+            return 'lightblue'  # futuro
+        elif row['cumplimiento_display'] >= 100:
+            return 'green'
+        else:
+            return 'orange'
+    
+    df_weeks['color_cumplimiento'] = df_weeks.apply(color_rule, axis=1)
+    
     # Selección interactiva
     selection2 = alt.selection_point(fields=['week'])
     
@@ -178,15 +189,7 @@ if plan_file and real_file:
         .encode(
             x=alt.X('week:O', title='Semana'),
             y=alt.Y('cumplimiento_display:Q', title='% Cumplimiento Plan'),
-            color=alt.condition(
-                "datum.is_future",  # Si es futura -> color claro
-                alt.value("lightblue"),
-                alt.condition(
-                    "datum.cumplimiento_display >= 100",  # Si cumple >=100 -> verde
-                    alt.value("green"),
-                    alt.value("orange")  # Si no -> naranja
-                )
-            ),
+            color=alt.Color('color_cumplimiento:N', legend=None),
             tooltip=[
                 alt.Tooltip('week:O', title='Semana'),
                 alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
