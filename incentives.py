@@ -175,7 +175,7 @@ if plan_file and real_file:
         y='plan:Q',
         tooltip=['week','semana_lbl','plan:Q'],
         color=alt.value('lightgray'),
-        opacity=alt.condition(selection, alt.value(0.8), alt.value(0.5))
+        opacity=alt.condition(selection, alt.value(1), alt.value(0.5))
     )
     
     # Área sombreada optimista/pesimista (solo semanas futuras)
@@ -200,7 +200,7 @@ if plan_file and real_file:
         )
         +
         alt.Chart(df_weeks)
-        .mark_point(filled=True, size=80, stroke='red', color='red')
+        .mark_point(filled=True, size=30, stroke='red', color='red')
         .encode(
             x='week:O',
             y='proj_general:Q',
