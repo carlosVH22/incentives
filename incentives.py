@@ -6,9 +6,50 @@ from prophet import Prophet
 import requests
 import io
 
+# --- Página ---
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide") 
-st.title("📊 Dashboard de TGMV: Real vs Plan vs Predicción")
 
+# --- CSS para diseño moderno ---
+st.markdown("""
+<style>
+    /* Fondo de la app */
+    .stApp {
+        background-color: #f7f8fa;
+    }
+
+    /* Contenedores estilo card */
+    .card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        margin-bottom: 20px;
+    }
+
+    /* Títulos grandes y coloridos */
+    .section-title {
+        color: #4B0082;
+        font-size: 22px;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+
+    /* Subtítulos de explicación */
+    .section-subtitle {
+        color: #555;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- Header central ---
+st.markdown("""
+<div style='text-align: center; padding: 20px;'>
+    <h1 style='color:#4B0082;'>📊 Dashboard de Incentivos TGMV 2025</h1>
+    <p style='color:#555;'>Comparación Real vs Plan vs Predicción con YoY</p>
+</div>
+""", unsafe_allow_html=True)
 # URLs de los CSVs
 PLAN_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_plan%20(1).csv"
 REAL_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_tgmv.csv"
