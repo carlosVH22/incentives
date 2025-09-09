@@ -143,21 +143,38 @@ if plan_file and real_file:
     st.subheader("📊 Vista semanal (plan, real y predicción)")
     st.dataframe(df_weeks.head(10))
 
-    # --- Gráfico Real vs Plan vs Predicción ---
-    melted = df_weeks.melt(id_vars=['week','semana_lbl'], value_vars=['real','plan','proj_general'],
-                           var_name='Métrica',value_name='Valor')
-    selection = alt.selection_point(fields=['week'])
-    chart1 = (alt.Chart(melted)
-              .mark_line(point=True)
-              .encode(x=alt.X('week:O',title='Semana'),
-                      y=alt.Y('Valor:Q',title='TGMV'),
-                      color=alt.Color('Métrica:N',legend=alt.Legend(title='Métrica')),
-                      tooltip=['week','semana_lbl','Métrica','Valor:Q'],
-                      opacity=alt.condition(selection, alt.value(1), alt.value(0.7)))
-              .add_params(selection)
-              .interactive().properties(height=400,width=850))
-    st.altair_chart(chart1,use_container_width=True)
 
+    # --- Gráfico Real vs Plan vs Predicción ---
+    selection = alt.selection_point(fields=['week'])
+    
+    # Real en columnas
+    real_chart = alt.Chart(df_weeks).mark_bar().encode(
+        x=alt.X('week:O', title='Semana'),
+        y=alt.Y('real:Q', title='TGMV'),
+        tooltip=['week','semana_lbl','real:Q'],
+        color=alt.value('#1f77b4'),
+        opacity=alt.condition(selection, alt.value(1), alt.value(0.7))
+    )
+    
+    # Plan en área gris
+    plan_chart = alt.Chart(df_weeks).mark_area(opacity=0.3, color='lightgray').encode(
+        x='week:O',
+        y='plan:Q',
+        tooltip=['week','semana_lbl','plan:Q']
+    )
+    
+    # Predicción en línea punteada
+    pred_chart = alt.Chart(df_weeks).mark_line(point=True, strokeDash=[5,5], color='orange').encode(
+        x='week:O',
+        y='proj_general:Q',
+        tooltip=['week','semana_lbl','proj_general:Q']
+    )
+    
+    # Combinar todos los gráficos
+    chart = (real_chart + plan_chart + pred_chart).add_params(selection).interactive().properties(height=400,width=850)
+    
+    st.altair_chart(chart, use_container_width=True)
+    
     # --- Gráfico Cumplimiento vs Plan ---
     st.subheader("📊 Cumplimiento vs Plan (%) (real y futuro)")
     
