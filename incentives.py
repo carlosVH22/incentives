@@ -225,3 +225,50 @@ if plan_file and real_file:
     )
     
     st.altair_chart(chart2, use_container_width=True)
+
+    # --- Gráfico Comparación 2024 vs 2025 en % ---
+    st.subheader("📊 Comparación 2024 vs 2025 (Real y Predicción) en %")
+    
+    # Calcular % respecto a plan 2025
+    df_weeks['pct_real_2025'] = df_weeks['real'] / df_weeks['plan'] * 100
+    df_weeks['pct_pred_2025'] = df_weeks['proj_general'] / df_weeks['plan'] * 100
+    df_weeks['pct_2024_vs_plan'] = df_weeks['yoy'] / df_weeks['plan'] * 100
+    
+    # Melt para Altair
+    melt_pct = df_weeks.melt(
+        id_vars=['week','semana_lbl'],
+        value_vars=['pct_real_2025','pct_pred_2025','pct_2024_vs_plan'],
+        var_name='Métrica', value_name='% Cumplimiento'
+    )
+    
+    # Opcional: colores
+    color_scale = alt.Scale(
+        domain=['pct_real_2025','pct_pred_2025','pct_2024_vs_plan'],
+        range=['blue','lightblue','gray']
+    )
+    
+    # Selección interactiva
+    selection_pct = alt.selection_point(fields=['week'])
+    
+    chart_pct = (
+        alt.Chart(melt_pct)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X('week:O', title='Semana'),
+            y=alt.Y('% Cumplimiento:Q', title='% Real / Plan'),
+            color=alt.Color('Métrica:N', scale=color_scale, legend=alt.Legend(title='Métrica')),
+            tooltip=[
+                alt.Tooltip('week:O', title='Semana'),
+                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
+                alt.Tooltip('Métrica:N', title='Métrica'),
+                alt.Tooltip('% Cumplimiento:Q', title='% Real/Plan', format='.1f')
+            ],
+            opacity=alt.condition(selection_pct, alt.value(1), alt.value(0.7))
+        )
+        .add_params(selection_pct)
+        .interactive()
+        .properties(height=400, width=850)
+    )
+    
+    st.altair_chart(chart_pct, use_container_width=True)
+
