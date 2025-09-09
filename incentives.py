@@ -180,7 +180,7 @@ if plan_file and real_file:
     
     # Área sombreada optimista/pesimista (solo semanas futuras)
     band_chart = (
-        alt.Chart(df_weeks[df_weeks['is_future']])
+        alt.Chart(df_weeks[df_weeks['is_future']fillna(False)])
         .mark_area(opacity=0.2, color="lightblue")
         .encode(
             x='week:O',
