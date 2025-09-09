@@ -156,11 +156,13 @@ if plan_file and real_file:
         opacity=alt.condition(selection, alt.value(1), alt.value(0.7))
     )
     
-    # Plan en área gris
-    plan_chart = alt.Chart(df_weeks).mark_area(opacity=0.5, color='lightgray').encode(
-        x='week:O',
+    # Plan en barras grises
+    plan_chart = alt.Chart(df_weeks).mark_bar().encode(
+        x=alt.X('week:O'),
         y='plan:Q',
-        tooltip=['week','semana_lbl','plan:Q']
+        tooltip=['week','semana_lbl','plan:Q'],
+        color=alt.value('lightgray'),
+        opacity=alt.condition(selection, alt.value(0.8), alt.value(0.5))
     )
     
     # Predicción en línea punteada
