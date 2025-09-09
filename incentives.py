@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
 import numpy as np
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
 st.title("📊 Dashboard de TGMV - Real vs Plan vs YoY")
@@ -22,118 +22,75 @@ if file_current and file_plan:
     df_plan = pd.read_csv(file_plan)
     df.columns = df.columns.str.strip().str.lower()
     df_plan.columns = df_plan.columns.str.strip().str.lower()
-
-    # Validar columnas mínimas
-    if not {'date','tgmv'}.issubset(df.columns) or not {'week','tgmv plan','tgmv 2024'}.issubset(df_plan.columns):
-        st.error("Verifica que los archivos tengan las columnas correctas.")
-        st.stop()
-
-    # Columna fecha
     df['date'] = pd.to_datetime(df['date'])
-
-    # Encontrar el primer domingo del año de la PRIMERA fecha presente en df
+    # Calcular semana Mercado Libre (domingo-sábado)
     year = df['date'].dt.year.min()
     first_sunday = pd.Timestamp(f"{year}-01-01")
-    while first_sunday.weekday() != 6:  # 6 es domingo
+    while first_sunday.weekday() != 6:
         first_sunday += pd.Timedelta(days=1)
-
-    # Calcular el número de semana Mercado Libre (domingo-sábado, semana 1 empieza primer domingo)
     df['week'] = ((df['date'] - first_sunday).dt.days // 7) + 1
-
-    st.info("Ejemplo de asignación de semana (Mercado Libre):")
-    st.dataframe(df[['date','week']].head(10))
 
     # Agrupar por semana
     df_weekly = df.groupby('week', as_index=False).agg({'tgmv': 'sum'})
     df_weekly.rename(columns={'tgmv':'real'}, inplace=True)
 
-    # Normalizar nombres y tipos en plan
+    # Preparar plan
     df_plan.rename(columns={'tgmv 2024':'yoy','tgmv plan':'plan'}, inplace=True)
     df_plan['week'] = df_plan['week'].astype(int)
     df_weekly['week'] = df_weekly['week'].astype(int)
 
-    # Merge alineando por semana Mercado Libre
+    # Merge    
     df_final = pd.merge(df_weekly, df_plan, on="week", how='inner')
 
-    # Calcular diferencia YoY y cumplimiento
+    # Calcular diferencia YoY
     df_final["diff_yoy"] = df_final["real"] - df_final["yoy"]
-    df_final["cumplimiento"] = np.where(df_final["plan"] != 0, df_final["real"] / df_final["plan"] * 100, np.nan)
+    df_final["cumplimiento"] = np.where(df_final["plan"] != 0, 
+                                        df_final["real"] / df_final["plan"] * 100, np.nan)
 
     st.subheader("📋 Vista previa de los datos procesados")
     st.dataframe(df_final.head())
 
+    weeks = df_final['week'].astype(str)
 
-    st.write("==== CHEQUEO ANTES DE GRAFICAR ====")
-    st.write("df_final columnas:", df_final.columns.tolist())
-    st.write(df_final.head(10))
-    st.write(df_final.isnull().sum())
-    for col in ["week","real","plan","yoy"]:
-        if col not in df_final.columns:
-            st.error(f"Falta columna {col} en df_final")
-    
-    df_final = df_final.dropna(subset=["week", "real", "plan", "yoy"])
-    df_final["week"] = df_final["week"].astype(str)
-    for col in ["real", "plan", "yoy"]:
-        df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
-        df_final = df_final[np.isfinite(df_final[col])]
-    
-    # Test chart simple
-    chart_test = alt.Chart(df_final).mark_line(point=True).encode(
-        x=alt.X("week:O", title="Semana"),
-        y=alt.Y("real:Q", title="TGMV Real"),
-        tooltip=["week","real"]
-    )
-    st.altair_chart(chart_test, use_container_width=True)
-
-
-
-    # ---- GRÁFICO 1: Evolución semanal ---
+    # --- Gráfico 1: Evolución Real vs Plan vs YoY ---
     st.subheader("📈 Evolución semanal: Real vs Plan vs YoY")
-    chart1 = (
-        alt.Chart(df_final)
-        .transform_fold(["real","plan","yoy"], as_=["Métrica","Valor"])
-        .mark_line(point=True)
-        .encode(
-            x=alt.X("week:O", title="Semana"),
-            y=alt.Y("Valor:Q", title="TGMV"),
-            color="Métrica:N",
-            tooltip=["week","Métrica","Valor"]
-        ).properties(width=800, height=400)
-    )
-    st.altair_chart(chart1, use_container_width=True)
+    fig1, ax1 = plt.subplots(figsize=(10,4))
+    ax1.plot(weeks, df_final['real'], marker='o', label='Real')
+    ax1.plot(weeks, df_final['plan'], marker='o', label='Plan')
+    ax1.plot(weeks, df_final['yoy'], marker='o', label='YoY')
+    ax1.set_xlabel('Semana')
+    ax1.set_ylabel('TGMV')
+    ax1.set_title('Evolución semanal: Real vs Plan vs YoY')
+    ax1.legend()
+    ax1.grid(True)
+    st.pyplot(fig1)
 
-    # ---- GRÁFICO 2: Diferencia YoY ---
+    # --- Gráfico 2: Diferencia YoY ---
     st.subheader("📉 Diferencia Real vs YoY")
-    chart2 = (
-        alt.Chart(df_final)
-        .mark_bar()
-        .encode(
-            x=alt.X("week:O", title="Semana"),
-            y=alt.Y("diff_yoy:Q", title="Diferencia YoY"),
-            color=alt.condition("datum.diff_yoy > 0", alt.value("green"), alt.value("red")),
-            tooltip=["week", "real", "yoy", "diff_yoy"]
-        ).properties(width=800, height=400)
-    )
-    st.altair_chart(chart2, use_container_width=True)
+    fig2, ax2 = plt.subplots(figsize=(10,4))
+    colors = ['green' if val > 0 else 'red' for val in df_final['diff_yoy']]
+    ax2.bar(weeks, df_final['diff_yoy'], color=colors)
+    ax2.set_xlabel('Semana')
+    ax2.set_ylabel('Diferencia YoY')
+    ax2.set_title('Diferencia Real vs YoY')
+    ax2.axhline(0, color='black', linestyle='--')
+    st.pyplot(fig2)
 
-    # ---- GRÁFICO 3: Cumplimiento ---
-    st.subheader("📊 Cumplimiento vs Plan")
-    chart3 = (
-        alt.Chart(df_final)
-            .mark_bar()
-            .encode(
-                x=alt.X("week:O", title="Semana"),
-                y=alt.Y("cumplimiento:Q", title="% Cumplimiento Plan"),
-                color=alt.condition("datum.cumplimiento >= 100", alt.value("green"), alt.value("orange")),
-                tooltip=["week", "real", "plan", "cumplimiento"]
-            )
-            .properties(width=800, height=400)
-    )
-    st.altair_chart(chart3, use_container_width=True)
+    # --- Gráfico 3: Cumplimiento vs Plan ---
+    st.subheader("📊 Cumplimiento vs Plan (%)")
+    fig3, ax3 = plt.subplots(figsize=(10,4))
+    colormap = ['green' if val >= 100 else 'orange' for val in df_final['cumplimiento']]
+    ax3.bar(weeks, df_final['cumplimiento'], color=colormap)
+    ax3.set_xlabel('Semana')
+    ax3.set_ylabel('% Cumplimiento')
+    ax3.set_title('% Cumplimiento vs Plan')
+    ax3.axhline(100, color='blue', linestyle='--',label="100% Plan")
+    ax3.legend()
+    st.pyplot(fig3)
 
-    # Descarga
-    st.download_button("Descargar datos procesados", df_final.to_csv(index=False).encode('utf-8'), "datos_dashboard.csv", "text/csv")
+    st.download_button("Descargar datos procesados", df_final.to_csv(index=False).encode('utf-8'),
+                       "datos_dashboard.csv", "text/csv")
 
-    st.success("✅ Dashboard generado con éxito. Pasa el cursor sobre los gráficos para ver los datos.")
+    st.success("✅ Dashboard generado con éxito. Puedes ver los gráficos arriba. Si necesitas detalles interactivos, puedes usar la tabla vista previa.")
 else:
     st.warning("Por favor sube ambos archivos CSV para continuar.")
