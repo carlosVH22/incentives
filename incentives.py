@@ -237,8 +237,8 @@ if plan_file and real_file:
     # Calcular cumplimiento YoY
     df_yoy['cumplimiento_yoy'] = np.where(
         df_yoy['is_future'],
-        df_yoy['proj_general'] / df_yoy['real_2024'] * 100,  # Futuro -> proyección
-        df_yoy['real'] / df_yoy['real_2024'] * 100           # Pasado -> real
+        (df_yoy['proj_general'] / df_yoy['real_2024']-1) * 100,  # Futuro -> proyección
+        (df_yoy['real'] / df_yoy['real_2024']-1) * 100           # Pasado -> real
     )
 
 
@@ -260,8 +260,8 @@ if plan_file and real_file:
         alt.Chart(df_yoy)
         .mark_bar()
         .encode(
-            x=alt.X('week:O', title='Semana'),
-            y=alt.Y('cumplimiento_yoy:Q', title='% Cumplimiento YoY (2025 vs 2024)'),
+            x=alt.X('week:O', title='Semana', axis=alt.Axis(format=',')),
+            y=alt.Y('cumplimiento_yoy:Q', title='% Cumplimiento YoY (2025 vs 2024)', axis=alt.Axis(format=',')),
             color=alt.Color('color_yoy:N', legend=None),
             tooltip=[
                 alt.Tooltip('week:O', title='Semana'),
