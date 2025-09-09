@@ -161,7 +161,7 @@ if plan_file and real_file:
     selection = alt.selection_point(fields=['week'])
     
     # Real en columnas
-    real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8).encode(
+    real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8, color='Blue_Light').encode(
         x=alt.X('week:O', title='Semana'),
         y=alt.Y('real:Q', title='TGMV'),
         tooltip=['week','semana_lbl','real:Q'],
@@ -170,7 +170,7 @@ if plan_file and real_file:
     )
     
     # Plan en barras grises
-    plan_chart = alt.Chart(df_weeks).mark_bar().encode(
+    plan_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8).encode(
         x=alt.X('week:O'),
         y='plan:Q',
         tooltip=['week','semana_lbl','plan:Q'],
