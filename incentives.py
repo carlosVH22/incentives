@@ -154,8 +154,10 @@ if plan_file and real_file:
         })
     )
 
-    st.subheader("📊 Gráfico Real vs Plan vs Predicción")
-    # --- Gráfico Real vs Plan vs Predicción ---
+
+    # --- Gráfico Real vs Plan vs Predicción con rango optimista/pesimista ---
+    st.subheader("📊 Gráfico Real vs Plan vs Predicción (con rango futuro)")
+    
     selection = alt.selection_point(fields=['week'])
     
     # Real en columnas
@@ -176,17 +178,43 @@ if plan_file and real_file:
         opacity=alt.condition(selection, alt.value(0.8), alt.value(0.5))
     )
     
-    # Predicción en línea punteada
-    pred_chart = alt.Chart(df_weeks).mark_line(point=True, strokeDash=[5,5], color='red').encode(
-        x='week:O',
-        y='proj_general:Q',
-        tooltip=['week','semana_lbl','proj_general:Q']
+    # Área sombreada optimista/pesimista (solo semanas futuras)
+    band_chart = (
+        alt.Chart(df_weeks[df_weeks['is_future']])
+        .mark_area(opacity=0.2, color="lightblue")
+        .encode(
+            x='week:O',
+            y='proj_neg:Q',
+            y2='proj_pos:Q',
+            tooltip=['week','semana_lbl','proj_neg:Q','proj_pos:Q']
+        )
+    )
+    
+    pred_chart = (
+        alt.Chart(df_weeks)
+        .mark_line(strokeDash=[5,5], color='red')
+        .encode(
+            x='week:O',
+            y='proj_general:Q',
+            tooltip=['week','semana_lbl','proj_general:Q']
+        )
+        +
+        alt.Chart(df_weeks)
+        .mark_point(color='red')
+        .encode(
+            x='week:O',
+            y='proj_general:Q',
+            tooltip=['week','semana_lbl','proj_general:Q']
+        )
     )
     
     # Combinar todos los gráficos
-    chart = (real_chart + plan_chart + pred_chart).add_params(selection).interactive().properties(height=400,width=850)
+    chart = (
+        plan_chart + real_chart + band_chart + pred_chart
+    ).add_params(selection).interactive().properties(height=400, width=850)
     
     st.altair_chart(chart, use_container_width=True)
+
     
     # --- Gráfico Cumplimiento vs Plan ---
     st.subheader("📊 Cumplimiento vs Plan (%) (real y futuro)")
