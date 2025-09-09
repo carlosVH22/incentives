@@ -62,6 +62,31 @@ if file_current and file_plan:
     st.subheader("📋 Vista previa de los datos procesados")
     st.dataframe(df_final.head())
 
+
+    st.write("==== CHEQUEO ANTES DE GRAFICAR ====")
+    st.write("df_final columnas:", df_final.columns.tolist())
+    st.write(df_final.head(10))
+    st.write(df_final.isnull().sum())
+    for col in ["week","real","plan","yoy"]:
+        if col not in df_final.columns:
+            st.error(f"Falta columna {col} en df_final")
+    
+    df_final = df_final.dropna(subset=["week", "real", "plan", "yoy"])
+    df_final["week"] = df_final["week"].astype(str)
+    for col in ["real", "plan", "yoy"]:
+        df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
+        df_final = df_final[np.isfinite(df_final[col])]
+    
+    # Test chart simple
+    chart_test = alt.Chart(df_final).mark_line(point=True).encode(
+        x=alt.X("week:O", title="Semana"),
+        y=alt.Y("real:Q", title="TGMV Real"),
+        tooltip=["week","real"]
+    )
+    st.altair_chart(chart_test, use_container_width=True)
+
+
+
     # ---- GRÁFICO 1: Evolución semanal ---
     st.subheader("📈 Evolución semanal: Real vs Plan vs YoY")
     chart1 = (
