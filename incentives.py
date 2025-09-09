@@ -161,7 +161,7 @@ if plan_file and real_file:
     selection = alt.selection_point(fields=['week'])
     
     # Real en columnas
-    real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8, color='Blue_Light').encode(
+    real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.5, color='Blue_Light').encode(
         x=alt.X('week:O', title='Semana'),
         y=alt.Y('real:Q', title='TGMV'),
         tooltip=['week','semana_lbl','real:Q'],
@@ -200,7 +200,7 @@ if plan_file and real_file:
         )
         +
         alt.Chart(df_weeks)
-        .mark_point(filled=True, size=30, stroke='red', color='red')
+        .mark_point(filled=True, size=15, stroke='red', color='red')
         .encode(
             x='week:O',
             y='proj_general:Q',
@@ -213,7 +213,7 @@ if plan_file and real_file:
         plan_chart + real_chart + band_chart + pred_chart
     ).add_params(selection).interactive().properties(height=400, width=850)
     
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, use_container_width=True).encode(axis=alt.Axis(format=','))
 
     
     # --- Gráfico Cumplimiento vs Plan ---
