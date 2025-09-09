@@ -166,8 +166,13 @@ if plan_file and real_file:
               .mark_bar()
               .encode(x=alt.X('week:O',title='Semana'),
                       y=alt.Y('cumplimiento_display:Q',title='% Cumplimiento Plan'),
-                      color=alt.condition(df_weeks['is_future'],alt.value('lightblue'),
-                                          alt.condition(df_weeks['cumplimiento_display']>=100, alt.value('green'), alt.value('orange'))),
+                        color=alt.condition(
+                            "datum.is_future",
+                            alt.value("lightblue"),  # predicción futura
+                            alt.condition("datum.cumplimiento_display >= 100",
+                                          alt.value("green"),
+                                          alt.value("orange"))
+                        ),
                       tooltip=['week','semana_lbl','plan','real','proj_general','cumplimiento_display:Q'],
                       opacity=alt.condition(selection2, alt.value(1), alt.value(0.7)))
               .add_params(selection2)
