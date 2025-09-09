@@ -225,35 +225,3 @@ if plan_file and real_file:
     )
     
     st.altair_chart(chart2, use_container_width=True)
-
-
-
-    selection_pct = alt.selection_point(fields=['week'])
-    
-    chart_pct = (
-        alt.Chart(melted_pct)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X('week:O', title='Semana'),
-            y=alt.Y('Porcentaje:Q', title='% vs Plan 2025'),
-            color=alt.Color('Métrica:N', 
-                            scale=alt.Scale(domain=['pct_real_2025','pct_pred_2025','pct_2024_vs_plan'],
-                                            range=['blue','lightblue','red']),
-                            legend=alt.Legend(title='Métrica')),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl', title='Rango de fechas'),
-                alt.Tooltip('Métrica:N', title='Métrica'),
-                alt.Tooltip('Porcentaje:Q', title='% vs Plan', format='.1f')
-            ],
-            opacity=alt.condition(selection_pct, alt.value(1), alt.value(0.7))
-        )
-        .add_params(selection_pct)
-        .interactive()
-        .properties(height=400, width=850)
-    )
-    
-    st.subheader("📊 Comparativa 2024 vs 2025 (real y predicción) en % respecto al plan 2025")
-    st.altair_chart(chart_pct, use_container_width=True)
-
-
