@@ -187,23 +187,8 @@ if plan_file and real_file:
     df_weeks['cumplimiento_future'] = df_weeks['proj_general']/df_weeks['plan']*100
     df_weeks['semana_lbl'] = df_weeks.apply(lambda x: f"Semana {x['week']} ({x['week_start'].date()} a {x['week_end'].date()})", axis=1)
 
-    st.subheader("📊 Vista semanal (plan, real y predicción)")
-    st.dataframe(
-    df_weeks.style.format({
-        "plan": "{:,.1f}",                  # separador miles, sin decimales
-        "real": "{:,.1f}",
-        "proj_general": "{:,.1f}",
-        "proj_neg": "{:,}",
-        "proj_pos": "{:,}",
-        "diff_pred": "{:,.1f}",
-        "cumplimiento": "{:,.1f}",       # 1 decimal
-        "cumplimiento_future": "{:,.1f}" # 1 decimal
-        })
-    )
-
 
     # --- Gráfico Real vs Plan vs Predicción con rango optimista/pesimista ---
-    st.subheader("📊 Gráfico Real vs Plan vs Predicción (con rango futuro)")
     
     selection = alt.selection_point(fields=['week'])
     
@@ -258,13 +243,11 @@ if plan_file and real_file:
         pred_chart
     ).add_params(selection).interactive().properties(height=400, width=850)
     
-    st.altair_chart(chart, use_container_width=True)
 
 
 
     
     # --- Gráfico Cumplimiento vs Plan ---
-    st.subheader("📊 Cumplimiento vs Plan (%) (real y futuro)")
     
     # Crear columna de visualización según si es futuro o pasado
     df_weeks['cumplimiento_display'] = np.where(
@@ -310,7 +293,6 @@ if plan_file and real_file:
         .properties(height=350, width=850)
     )
     
-    st.altair_chart(chart2, use_container_width=True)
 
 
     real_2024 = df_real[df_real['date'].dt.year==2024].copy()
@@ -338,7 +320,6 @@ if plan_file and real_file:
     
     df_yoy['color_yoy'] = df_yoy.apply(color_rule_yoy, axis=1)
 
-    st.subheader("📊 YoY 2025 vs 2024 Real y Predicho (%)")
     
     selection3 = alt.selection_point(fields=['week'])
     
@@ -363,8 +344,6 @@ if plan_file and real_file:
         .interactive()
         .properties(height=350, width=850)
     )
-    
-    st.altair_chart(chart3, use_container_width=True)
 
 
 
