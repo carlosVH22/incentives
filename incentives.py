@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+from prophet import Prophet
 
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
-st.title("📊 Dashboard de TGMV: Real vs Plan vs YoY (semanas custom)")
+st.title("📊 Dashboard de TGMV: Real vs Plan vs YoY (semanas custom + predicción)")
 
 st.sidebar.header("Carga los archivos CSV")
 plan_file = st.sidebar.file_uploader("Sube el plan diario 2025 (date, plan)", type="csv")
@@ -15,11 +16,9 @@ def assign_custom_weeks(df):
     df = df.copy()
     df['date'] = pd.to_datetime(df['date'])
     year = df['date'].dt.year.iloc[0]
-    # Rango completo del año (por si faltan días en el DF)
     all_days = pd.date_range(f'{year}-01-01', f'{year}-12-31')
-    # Encuentra primer sábado
     start = all_days[0]
-    while start.weekday() != 5 and start <= all_days[-1]:  # 5 = sábado
+    while start.weekday() != 5 and start <= all_days[-1]:
         start += pd.Timedelta(days=1)
     week_ends = [start]
     while week_ends[-1] + pd.Timedelta(days=1) <= all_days[-1]:
@@ -42,7 +41,7 @@ def assign_custom_weeks(df):
 if plan_file and real_file:
     # --- LEE Y PROCESA EL PLAN DIARIO 2025 ---
     df_plan = pd.read_csv(plan_file)
-    df_plan.columns = df_plan.columns.str.strip().str.lower()  # normaliza nombres
+    df_plan.columns = df_plan.columns.str.strip().str.lower()
     df_plan['date'] = pd.to_datetime(df_plan['date'])
     df_plan = assign_custom_weeks(df_plan)
     plan_weekly = df_plan.groupby(['week', 'week_start', 'week_end'])['plan'].sum().reset_index()
@@ -55,43 +54,60 @@ if plan_file and real_file:
     # --- REAL 2025 ---
     real_2025 = df_real[df_real['date'].dt.year == 2025]
     real_2025 = assign_custom_weeks(real_2025)
-    real_2025w = real_2025.groupby(['week', 'week_start', 'week_end'])['tgmv'].sum().reset_index()
+    real_2025w = real_2025.groupby(['week','week_start','week_end'])['tgmv'].sum().reset_index()
     real_2025w.rename(columns={'tgmv':'real'}, inplace=True)
 
     # --- REAL 2024 para YoY ---
     real_2024 = df_real[df_real['date'].dt.year == 2024]
     if len(real_2024) > 0:
         real_2024 = assign_custom_weeks(real_2024)
-        real_2024w = real_2024.groupby(['week', 'week_start', 'week_end'])['tgmv'].sum().reset_index()
+        real_2024w = real_2024.groupby(['week','week_start','week_end'])['tgmv'].sum().reset_index()
         real_2024w.rename(columns={'tgmv':'yoy'}, inplace=True)
     else:
-        real_2024w = pd.DataFrame(columns=['week', 'week_start', 'week_end', 'yoy'])
+        real_2024w = pd.DataFrame(columns=['week','week_start','week_end','yoy'])
 
     # --- JUNTAR TODO ---
-    df_weeks = plan_weekly.merge(real_2025w, on=['week', 'week_start', 'week_end'], how='left')
-    df_weeks = df_weeks.merge(real_2024w[['week', 'yoy']], on='week', how='left')
+    df_weeks = plan_weekly.merge(real_2025w, on=['week','week_start','week_end'], how='left')
+    df_weeks = df_weeks.merge(real_2024w[['week','yoy']], on='week', how='left')
 
     df_weeks['diff_yoy'] = df_weeks['real'] - df_weeks['yoy']
     df_weeks['cumplimiento'] = df_weeks['real'] / df_weeks['plan'] * 100
 
-    # Etiquetas para tooltip: semana y rango de fechas
+    # Etiquetas tooltip
     df_weeks['semana_lbl'] = df_weeks.apply(
         lambda x: f"Semana {x['week']} ({x['week_start'].date()} a {x['week_end'].date()})", axis=1
     )
 
-    # --- VISTA PREVIA ---
-    st.subheader(":mag: Vista previa de las semanas agregadas")
-    st.dataframe(df_weeks[['week','week_start','week_end','plan','real','yoy','diff_yoy','cumplimiento']].head(10))
+    # --- 📈 PREDICCIÓN CON PROPHET ---
+    st.sidebar.subheader("⚡ Predicción con Prophet")
+    periods = st.sidebar.slider("Semanas a predecir", 1, 12, 6)
 
-    # --- Gráfico 1: Real vs Plan vs YoY ---
-    st.subheader("📈 Evolución semanal Real vs. Plan vs. YoY (interactivo)")
+    if len(real_2025) > 0:
+        df_prophet = real_2025[['date','tgmv']].rename(columns={'date':'ds','tgmv':'y'})
+        model = Prophet(daily_seasonality=False, weekly_seasonality=True, yearly_seasonality=True)
+        model.fit(df_prophet)
+
+        future = model.make_future_dataframe(periods=periods*7, freq='D')
+        forecast = model.predict(future)
+
+        forecast['date'] = forecast['ds']
+        forecast = assign_custom_weeks(forecast)
+        forecast_weekly = forecast.groupby(['week','week_start','week_end'])[['yhat','yhat_lower','yhat_upper']].sum().reset_index()
+
+        df_weeks = df_weeks.merge(forecast_weekly, on=['week','week_start','week_end'], how='outer')
+
+    # --- Vista previa ---
+    st.subheader("📋 Vista previa de las semanas agregadas")
+    st.dataframe(df_weeks[['week','week_start','week_end','plan','real','yoy','yhat','yhat_lower','yhat_upper','diff_yoy','cumplimiento']].head(15))
+
+    # --- Gráfico 1: Real vs Plan vs YoY + Forecast ---
+    st.subheader("📈 Evolución semanal con predicción")
     melted = df_weeks.melt(
         id_vars=['week','semana_lbl'],
-        value_vars=['real','plan','yoy'],
+        value_vars=['real','plan','yoy','yhat'],
         var_name='Métrica', value_name='Valor'
     )
 
-    # Selección de punto interactiva
     selection = alt.selection_point(fields=['week'])
     chart1 = (
         alt.Chart(melted)
@@ -99,7 +115,7 @@ if plan_file and real_file:
         .encode(
             x=alt.X("week:O", title="Semana"),
             y=alt.Y("Valor:Q", title="TGMV"),
-            color=alt.Color('Métrica:N',legend=alt.Legend(title="Métrica")),
+            color=alt.Color('Métrica:N', legend=alt.Legend(title="Métrica")),
             tooltip=[
                 alt.Tooltip('week:O', title='Semana'),
                 alt.Tooltip('semana_lbl', title='Rango de fechas'),
@@ -112,9 +128,21 @@ if plan_file and real_file:
         .interactive()
         .properties(height=400, width=850)
     )
-    st.altair_chart(chart1, use_container_width=True)
 
-    # --- Gráfico 2: Diferencia YoY (Barra interactiva) ---
+    # Banda de incertidumbre Prophet
+    band = (
+        alt.Chart(df_weeks)
+        .mark_area(opacity=0.2, color="lightblue")
+        .encode(
+            x="week:O",
+            y="yhat_lower:Q",
+            y2="yhat_upper:Q"
+        )
+    )
+
+    st.altair_chart(band + chart1, use_container_width=True)
+
+    # --- Gráfico 2 y 3 (sin cambios) ---
     st.subheader("📉 Diferencia Real vs YoY (interactivo)")
     selection2 = alt.selection_point(fields=['week'])
     chart2 = (
@@ -123,17 +151,8 @@ if plan_file and real_file:
         .encode(
             x=alt.X("week:O", title="Semana"),
             y=alt.Y("diff_yoy:Q", title="Diferencia YoY"),
-            color=alt.condition(
-                "datum.diff_yoy > 0",
-                alt.value("green"),
-                alt.value("red")),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl', title='Rango de fechas'),
-                alt.Tooltip('real:Q', title='Real', format=','),
-                alt.Tooltip('yoy:Q', title='YoY', format=','),
-                alt.Tooltip('diff_yoy:Q', title='Dif. YoY', format=',')
-            ],
+            color=alt.condition("datum.diff_yoy > 0", alt.value("green"), alt.value("red")),
+            tooltip=["week","semana_lbl","real","yoy","diff_yoy"],
             opacity=alt.condition(selection2, alt.value(1), alt.value(0.7))
         )
         .add_params(selection2)
@@ -142,26 +161,16 @@ if plan_file and real_file:
     )
     st.altair_chart(chart2, use_container_width=True)
 
-    # --- Gráfico 3: Cumplimiento vs Plan ---
     st.subheader("📊 Cumplimiento vs Plan (%) (interactivo)")
     selection3 = alt.selection_point(fields=['week'])
     chart3 = (
         alt.Chart(df_weeks)
         .mark_bar()
         .encode(
-            x=alt.X("week:O", title="Semana"),
-            y=alt.Y("cumplimiento:Q", title="% Cumplimiento Plan"),
-            color=alt.condition(
-                "datum.cumplimiento >= 100",
-                alt.value("green"),
-                alt.value("orange")),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl', title='Rango de fechas'),
-                alt.Tooltip('real:Q', title='Real', format=','),
-                alt.Tooltip('plan:Q', title='Plan', format=','),
-                alt.Tooltip('cumplimiento:Q', title='% Cumplimiento', format='.1f')
-            ],
+            x="week:O",
+            y="cumplimiento:Q",
+            color=alt.condition("datum.cumplimiento >= 100", alt.value("green"), alt.value("orange")),
+            tooltip=["week","semana_lbl","real","plan","cumplimiento"],
             opacity=alt.condition(selection3, alt.value(1), alt.value(0.7))
         )
         .add_params(selection3)
@@ -170,14 +179,5 @@ if plan_file and real_file:
     )
     st.altair_chart(chart3, use_container_width=True)
 
-    # Botón de descarga
-    st.download_button(
-        "Descargar datos semanales",
-        df_weeks[['week','week_start','week_end','plan','real','yoy','diff_yoy','cumplimiento']].to_csv(index=False).encode('utf-8'),
-        file_name="datos_dashboard_semanal.csv",
-        mime="text/csv"
-    )
-
-    st.success("¡Dashboard generado con éxito! Haz click/sobrevuela un punto/barras para ver los datos precisos.")
 else:
     st.warning("Por favor sube ambos archivos CSV para continuar.")
