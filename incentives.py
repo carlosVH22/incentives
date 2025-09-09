@@ -225,3 +225,59 @@ if plan_file and real_file:
     )
     
     st.altair_chart(chart2, use_container_width=True)
+
+
+    real_2024 = df_real[df_real['date'].dt.year==2024].copy()
+    real_2024 = assign_custom_weeks(real_2024)
+    real_2024w = real_2024.groupby(['week','week_start','week_end'])['tgmv'].sum().reset_index().rename(columns={'tgmv':'real_2024'})
+
+    # Unir semanas 2024 y 2025
+    df_yoy = df_weeks.merge(real_2024w[['week','real_2024']], on='week', how='left')
+
+    # Calcular cumplimiento YoY
+    df_yoy['cumplimiento_yoy'] = np.where(
+        df_yoy['is_future'],
+        df_yoy['proj_general'] / df_yoy['real_2024'] * 100,  # Futuro -> proyección
+        df_yoy['real'] / df_yoy['real_2024'] * 100           # Pasado -> real
+    )
+
+
+    def color_rule_yoy(row):
+        if row['is_future']:
+            return 'lightblue'   # futuro
+        elif row['cumplimiento_yoy'] >= 100:
+            return 'green'
+        else:
+            return 'orange'
+    
+    df_yoy['color_yoy'] = df_yoy.apply(color_rule_yoy, axis=1)
+
+    st.subheader("📊 Cumplimiento YoY 2025 vs 2024 (%)")
+    
+    selection3 = alt.selection_point(fields=['week'])
+    
+    chart3 = (
+        alt.Chart(df_yoy)
+        .mark_bar()
+        .encode(
+            x=alt.X('week:O', title='Semana'),
+            y=alt.Y('cumplimiento_yoy:Q', title='% Cumplimiento YoY (2025 vs 2024)'),
+            color=alt.Color('color_yoy:N', legend=None),
+            tooltip=[
+                alt.Tooltip('week:O', title='Semana'),
+                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
+                alt.Tooltip('real_2024:Q', title='Real 2024', format=','),
+                alt.Tooltip('real:Q', title='Real 2025', format=','),
+                alt.Tooltip('proj_general:Q', title='Proyección 2025', format=','),
+                alt.Tooltip('cumplimiento_yoy:Q', title='% Cumplimiento YoY', format='.1f')
+            ],
+            opacity=alt.condition(selection3, alt.value(1), alt.value(0.7))
+        )
+        .add_params(selection3)
+        .interactive()
+        .properties(height=350, width=850)
+    )
+    
+    st.altair_chart(chart3, use_container_width=True)
+
+
