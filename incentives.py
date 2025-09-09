@@ -161,18 +161,20 @@ if plan_file and real_file:
     selection = alt.selection_point(fields=['week'])
     
     # Real en columnas
-    real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.5, color='Blue_Light').encode(
+    real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.5).encode(
         x=alt.X('week:O', title='Semana'),
         y=alt.Y('real:Q', title='TGMV'),
+        axis=alt.Axis(format=','),
         tooltip=['week','semana_lbl','real:Q'],
         color=alt.value('#1f77b4'),
-        opacity=alt.condition(selection, alt.value(1), alt.value(0.7))
+        opacity=alt.condition(selection, alt.value(0.8), alt.value(0.7))
     )
     
     # Plan en barras grises
     plan_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8).encode(
         x=alt.X('week:O'),
         y='plan:Q',
+        axis=alt.Axis(format=','),
         tooltip=['week','semana_lbl','plan:Q'],
         color=alt.value('lightgray'),
         opacity=alt.condition(selection, alt.value(1), alt.value(0.5))
@@ -186,6 +188,7 @@ if plan_file and real_file:
             x='week:O',
             y='proj_neg:Q',
             y2='proj_pos:Q',
+            axis=alt.Axis(format=','),
             tooltip=['week','semana_lbl','proj_neg:Q','proj_pos:Q']
         )
     )
@@ -196,6 +199,7 @@ if plan_file and real_file:
         .encode(
             x='week:O',
             y='proj_general:Q',
+            axis=alt.Axis(format=','),
             tooltip=['week','semana_lbl','proj_general:Q']
         )
         +
@@ -204,6 +208,7 @@ if plan_file and real_file:
         .encode(
             x='week:O',
             y='proj_general:Q',
+            axis=alt.Axis(format=','),
             tooltip=['week','semana_lbl','proj_general:Q']
         )
     )
@@ -213,7 +218,7 @@ if plan_file and real_file:
         plan_chart + real_chart + band_chart + pred_chart
     ).add_params(selection).interactive().properties(height=400, width=850)
     
-    st.altair_chart(chart, use_container_width=True).encode(axis=alt.Axis(format=','))
+    st.altair_chart(chart, use_container_width=True)
 
     
     # --- Gráfico Cumplimiento vs Plan ---
