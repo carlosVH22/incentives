@@ -245,7 +245,7 @@ if plan_file and real_file:
     def color_rule_yoy(row):
         if row['is_future']:
             return 'lightblue'   # futuro
-        elif row['cumplimiento_yoy'] >= 100:
+        elif row['cumplimiento_yoy'] >= 0:
             return 'green'
         else:
             return 'orange'
