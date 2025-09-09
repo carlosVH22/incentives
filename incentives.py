@@ -68,17 +68,22 @@ if plan_file and real_file:
         real_2024w = pd.DataFrame(columns=['week','week_start','week_end','yoy'])
 
     # --- Prophet para predecir ---
-    df_prophet = real_2025[['date','real']].dropna()
-    df_prophet = df_prophet.rename(columns={'date':'ds','real':'y'})
-    model = Prophet()
-    model.fit(df_prophet)
-    future = model.make_future_dataframe(periods=n_pred_weeks*7)
-    forecast = model.predict(future)
+    df_prophet = real_2025[['date','tgmv']].dropna()
+    df_prophet = df_prophet.rename(columns={'date':'ds','tgmv':'y'})
+    
+    if len(df_prophet) > 2:  # evita fallo si hay pocos datos
+        model = Prophet()
+        model.fit(df_prophet)
+        future = model.make_future_dataframe(periods=n_pred_weeks*7)
+        forecast = model.predict(future)
+    
+        forecast = forecast[['ds','yhat']].rename(columns={'ds':'date'})
+        forecast['date'] = pd.to_datetime(forecast['date'])
+        forecast = assign_custom_weeks(forecast)
+        forecast_weekly = forecast.groupby(['week','week_start','week_end'])['yhat'].sum().reset_index()
+    else:
+        forecast_weekly = pd.DataFrame(columns=['week','week_start','week_end','yhat'])
 
-    forecast = forecast[['ds','yhat']].rename(columns={'ds':'date'})
-    forecast['date'] = pd.to_datetime(forecast['date'])
-    forecast = assign_custom_weeks(forecast)
-    forecast_weekly = forecast.groupby(['week','week_start','week_end'])['yhat'].sum().reset_index()
 
     # --- Merge todo ---
     df_weeks = plan_weekly.merge(real_2025w, on=['week','week_start','week_end'], how='left')
