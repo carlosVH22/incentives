@@ -9,6 +9,7 @@ import io
 # --- Página ---
 st.set_page_config(page_title="Dashboard Incentivos", layout="wide") 
 
+# --- CSS para diseño moderno ---
 st.markdown("""
 <style>
     /* Fondo de la app */
@@ -23,13 +24,6 @@ st.markdown("""
         border-radius: 12px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.08);
         margin-bottom: 20px;
-    }
-
-    /* Efecto hover para los cards */
-    .card:hover {
-        box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-        transform: translateY(-2px);
-        transition: all 0.2s ease-in-out;
     }
 
     /* Títulos grandes y coloridos */
