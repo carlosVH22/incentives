@@ -53,7 +53,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 # URLs de los CSVs
 PLAN_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_plan%20(1).csv"
-REAL_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_tgmv.csv"
+REAL_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/tgmv%209%20de%20septiembre.csv"
 
 # Guardar los CSV "crudos" en las variables
 plan_file = io.StringIO(requests.get(PLAN_URL).text)
