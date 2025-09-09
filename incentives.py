@@ -540,6 +540,58 @@ if plan_file and real_file:
     st.altair_chart(chart_mix, use_container_width=True)
 
 
+    # --- Columna combinada para YoY (real pasado o proyección actual/futuro) ---
+    def get_value_yoy(row):
+        if not row['is_future'] and not row['is_current']:
+            return row['real']   # Pasado → real
+        else:
+            return row['proj_general']  # Semana en curso o futuro → proyección
+    
+    df_weeks['real_or_proj_yoy'] = df_weeks.apply(get_value_yoy, axis=1)
+    
+    # --- % crecimiento YoY ---
+    df_weeks['yoy_mix'] = ((df_weeks['real_or_proj_yoy'] / df_weeks['real_last_year']) - 1) * 100
+    
+    # --- Colores según reglas ---
+    def color_rule_yoy(row):
+        if not row['is_future'] and not row['is_current']:
+            return 'blue'       # Pasado → azul fuerte
+        else:
+            return 'lightblue'  # Semana en curso o futuro → azul claro
+    
+    df_weeks['color_yoy'] = df_weeks.apply(color_rule_yoy, axis=1)
+    
+    # --- Gráfico ---
+    st.subheader("📊 Crecimiento YoY (Real + Semana en curso + Futuro)")
+    
+    selection_yoy = alt.selection_point(fields=['week'])
+    
+    chart_yoy = (
+        alt.Chart(df_weeks)
+        .mark_bar()
+        .encode(
+            x=alt.X('week:O', title='Semana'),
+            y=alt.Y('yoy_mix:Q', title='% Crecimiento YoY'),
+            color=alt.Color('color_yoy:N', legend=None),
+            tooltip=[
+                alt.Tooltip('week:O', title='Semana'),
+                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
+                alt.Tooltip('real_last_year:Q', title='Real año pasado', format=','),
+                alt.Tooltip('real:Q', title='Real actual', format=','),
+                alt.Tooltip('proj_general:Q', title='Proyección actual', format=','),
+                alt.Tooltip('yoy_mix:Q', title='% YoY', format='.1f')
+            ],
+            opacity=alt.condition(selection_yoy, alt.value(1), alt.value(0.7))
+        )
+        .add_params(selection_yoy)
+        .interactive()
+        .properties(height=350, width=850)
+    )
+    
+    st.altair_chart(chart_yoy, use_container_width=True)
+
+
+
 
 
 
