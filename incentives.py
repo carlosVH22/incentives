@@ -4,22 +4,36 @@ import numpy as np
 import altair as alt
 from prophet import Prophet
 
-st.set_page_config(page_title="Dashboard Incentivos", layout="wide")
-st.title("📊 Dashboard TGMV Predicciones")
+# --- Lectura de CSVs desde GitHub ---
+import pandas as pd
+import streamlit as st
 
-st.sidebar.header("Archivos CSV desde GitHub")
+st.sidebar.header("Datos cargados desde GitHub")
 
-# URLs de los CSV en GitHub (raw)
-plan_url = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_plan%20(1).csv"
-real_url = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_tgmv.csv"
+# URLs de los CSVs
+PLAN_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_plan%20(1).csv"
+REAL_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_tgmv.csv"
 
-# Leer CSVs directamente
-try:
-    plan_file = pd.read_csv(plan_url)
-    real_file = pd.read_csv(real_url)
-    st.sidebar.success("CSV cargados correctamente desde GitHub")
-except Exception as e:
-    st.sidebar.error(f"Error al cargar los CSV desde GitHub: {e}")
+@st.cache_data
+def load_csv(url):
+    try:
+        df = pd.read_csv(url, parse_dates=['date'])
+        return df
+    except Exception as e:
+        st.error(f"No se pudo leer el CSV: {url}\nError: {e}")
+        return pd.DataFrame()  # Devuelve un DF vacío si falla
+
+plan_file = load_csv(PLAN_URL)
+real_file = load_csv(REAL_URL)
+
+# Validar que se cargaron correctamente
+if plan_file.empty or real_file.empty:
+    st.warning("Alguno de los CSV no se pudo cargar correctamente desde GitHub.")
+else:
+    st.success("CSV cargados correctamente desde GitHub")
+    st.dataframe(plan_file.head())
+    st.dataframe(real_file.head())
+
 
 # --- Función semanas custom ---
 def assign_custom_weeks(df):
