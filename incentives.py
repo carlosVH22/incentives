@@ -328,21 +328,58 @@ if plan_file and real_file:
 
 
     # --- Contenedores estilo card para secciones ---
-    with st.container():
-        st.markdown("<div class='card'><div class='section-title'>📊 Vista Semanal</div><div class='section-subtitle'>Tabla resumen de Plan, Real y Predicción semanal</div></div>", unsafe_allow_html=True)
-        st.dataframe(df_weeks.style.format({...}))
     
+    # --- Vista Semanal (tabla) ---
     with st.container():
-        st.markdown("<div class='card'><div class='section-title'>📊 Gráfico Real vs Plan vs Predicción</div><div class='section-subtitle'>Incluye rango optimista/pesimista para semanas futuras</div></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='card'>
+            <div class='section-title'>📊 Vista Semanal</div>
+            <div class='section-subtitle'>Tabla resumen de Plan, Real y Predicción semanal</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.dataframe(
+            df_weeks.style.format({
+                "plan": "{:,.1f}",
+                "real": "{:,.1f}",
+                "proj_general": "{:,.1f}",
+                "proj_neg": "{:,.1f}",
+                "proj_pos": "{:,.1f}",
+                "diff_pred": "{:,.1f}",
+                "cumplimiento": "{:,.1f}",
+                "cumplimiento_future": "{:,.1f}"
+            })
+        )
+    
+    # --- Gráfico Real vs Plan vs Predicción ---
+    with st.container():
+        st.markdown("""
+        <div class='card'>
+            <div class='section-title'>📊 Gráfico Real vs Plan vs Predicción</div>
+            <div class='section-subtitle'>Incluye rango optimista/pesimista para semanas futuras</div>
+        </div>
+        """, unsafe_allow_html=True)
         st.altair_chart(chart, use_container_width=True)
     
+    # --- Gráfico Cumplimiento vs Plan (%) ---
     with st.container():
-        st.markdown("<div class='card'><div class='section-title'>📊 Cumplimiento vs Plan (%)</div><div class='section-subtitle'>Se muestran valores reales y proyecciones para semanas futuras</div></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='card'>
+            <div class='section-title'>📊 Cumplimiento vs Plan (%)</div>
+            <div class='section-subtitle'>Se muestran valores reales y proyecciones para semanas futuras</div>
+        </div>
+        """, unsafe_allow_html=True)
         st.altair_chart(chart2, use_container_width=True)
     
+    # --- Gráfico YoY 2025 vs 2024 ---
     with st.container():
-        st.markdown("<div class='card'><div class='section-title'>📊 YoY 2025 vs 2024</div><div class='section-subtitle'>Comparación de TGMV real y proyectado respecto a 2024</div></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='card'>
+            <div class='section-title'>📊 YoY 2025 vs 2024</div>
+            <div class='section-subtitle'>Comparación de TGMV real y proyectado respecto a 2024</div>
+        </div>
+        """, unsafe_allow_html=True)
         st.altair_chart(chart3, use_container_width=True)
+
 
 
 
