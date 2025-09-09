@@ -172,7 +172,7 @@ if plan_file and real_file:
     # Plan en barras grises
     plan_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8).encode(
         x=alt.X('week:O', axis=alt.Axis(format=',')),
-        y=alt.y('plan:Q', axis=alt.Axis(format=',')),
+        y=alt.Y('plan:Q', axis=alt.Axis(format=',')),
         tooltip=['week','semana_lbl','plan:Q'],
         color=alt.value('lightgray'),
         opacity=alt.condition(selection, alt.value(1), alt.value(0.5))
