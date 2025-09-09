@@ -471,6 +471,73 @@ if plan_file and real_file:
             
             st.altair_chart(yoy_chart, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
+            
+            
+    # --- Ajustar semanas domingo-sábado ---
+    def assign_custom_weeks(df):
+        # Semana empieza en domingo → ajustar con weekday (0=lunes,...,6=domingo)
+        df['week_start'] = df['date'] - pd.to_timedelta((df['date'].dt.weekday + 1) % 7, unit='D')
+        df['week_end'] = df['week_start'] + pd.Timedelta(days=6)
+    
+        # Número de semana custom (domingo-sábado)
+        df['week'] = ((df['week_start'] - df['week_start'].min()).dt.days // 7) + 1
+        return df
+    
+    # --- Identificar semana en curso ---
+    today = pd.Timestamp.today().normalize()  # Fecha de hoy sin hora
+    df_weeks['is_current'] = df_weeks.apply(
+        lambda row: (row['week_start'] <= today <= row['week_end']), axis=1
+    )
+    
+    # --- Columna combinada: real (pasado) o proyección (actual/futuro) ---
+    def get_value(row):
+        if not row['is_future'] and not row['is_current']:
+            return row['real']  # Pasado → real
+        else:
+            return row['proj_general']  # Semana en curso o futuro → predicción
+    
+    df_weeks['real_or_proj'] = df_weeks.apply(get_value, axis=1)
+    
+    # --- % de cumplimiento vs plan ---
+    df_weeks['cumplimiento_mix'] = (df_weeks['real_or_proj'] / df_weeks['plan']) * 100
+    
+    # --- Colores según reglas ---
+    def color_rule_mix(row):
+        if not row['is_future'] and not row['is_current']:
+            return 'blue'       # Pasado → azul fuerte
+        else:
+            return 'lightblue'  # Semana en curso o futuro → azul claro
+    
+    df_weeks['color_mix'] = df_weeks.apply(color_rule_mix, axis=1)
+    
+    # --- Gráfico ---
+    st.subheader("📊 Cumplimiento vs Plan (Real + Semana en curso + Futuro)")
+    
+    selection_mix = alt.selection_point(fields=['week'])
+    
+    chart_mix = (
+        alt.Chart(df_weeks)
+        .mark_bar()
+        .encode(
+            x=alt.X('week:O', title='Semana'),
+            y=alt.Y('cumplimiento_mix:Q', title='% Cumplimiento Plan'),
+            color=alt.Color('color_mix:N', legend=None),
+            tooltip=[
+                alt.Tooltip('week:O', title='Semana'),
+                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
+                alt.Tooltip('plan:Q', title='Plan', format=','),
+                alt.Tooltip('real:Q', title='Real', format=','),
+                alt.Tooltip('proj_general:Q', title='Proyección', format=','),
+                alt.Tooltip('cumplimiento_mix:Q', title='% Cumplimiento', format='.1f')
+            ],
+            opacity=alt.condition(selection_mix, alt.value(1), alt.value(0.7))
+        )
+        .add_params(selection_mix)
+        .interactive()
+        .properties(height=350, width=850)
+    )
+    
+    st.altair_chart(chart_mix, use_container_width=True)
 
 
 
