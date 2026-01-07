@@ -1,597 +1,421 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import altair as alt
-from prophet import Prophet
-import requests
-import io
 
-# --- Página ---
-st.set_page_config(page_title="Dashboard Incentivos", layout="wide") 
-
-# --- CSS para diseño moderno ---
-st.markdown("""
-<style>
-    /* Fondo de la app */
-    .stApp {
-        background-color: #f7f8fa;
-    }
-
-    /* Contenedores estilo card */
-    .card {
-        background-color: #ffffff;
-        padding: 20px;
+# --- Estilo CSS personalizado ---
+st.markdown(
+    """
+    <style>
+    div.stButton > button {
+        background-color: #FF6600;
+        color: white;
         border-radius: 12px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-        margin-bottom: 20px;
-    }
-
-    /* Títulos grandes y coloridos */
-    .section-title {
-        color: #4B0082;
-        font-size: 22px;
         font-weight: bold;
-        margin-bottom: 5px;
+        font-size: 16px;
+        padding: 10px 24px;
+        transition: background-color 0.3s ease;
     }
-
-    /* Subtítulos de explicación */
-    .section-subtitle {
-        color: #555;
-        font-size: 14px;
+    div.stButton > button:hover {
+        background-color: #e65c00;
+    }
+    .main-header {
+        color: #FF6600;
+        font-weight: 900;
+        font-size: 50px;
+        text-align: center;
         margin-bottom: 10px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-</style>
-""", unsafe_allow_html=True)
+    .sub-header {
+        color: #FF6600;
+        font-weight: 700;
+        font-size: 28px;
+        margin-top: 30px;
+        margin-bottom: 10px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .section-title {
+        text-align: center;
+        font-size: 22px;
+        color: #555;
+        font-weight: 600;
+        margin-top: 25px;
+        margin-bottom: 15px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
+# Título principal
+st.markdown("<h1 class='main-header'>Calculadora DXGY 🧮🍊</h1>", unsafe_allow_html=True)
 
-# --- Header central ---
-st.markdown("""
-<div style='text-align: center; padding: 20px;'>
-    <h1 style='color:#4B0082;'>📊 Dashboard de Incentivos TGMV 2025</h1>
-    <p style='color:#555;'>Comparación Real vs Plan vs Predicción con YoY</p>
-</div>
-""", unsafe_allow_html=True)
-# URLs de los CSVs
-PLAN_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_plan%20(1).csv"
-REAL_URL = "https://raw.githubusercontent.com/carlosVH22/incentives/refs/heads/main/df_tgmv_9.csv"
+# 1. Upload CSV ciudades
+st.markdown("<h4 class='section-title'>📊 1. Carga el CSV de ciudades</h4>", unsafe_allow_html=True)
+df_ciudades = st.file_uploader("Sube el CSV de ciudades (city_id, city_name, gmv, country_code, cluster)", type="csv")
 
-# Guardar los CSV "crudos" en las variables
-plan_file = io.StringIO(requests.get(PLAN_URL).text)
-real_file = io.StringIO(requests.get(REAL_URL).text)
+if df_ciudades is not None:
+    df_c = pd.read_csv(df_ciudades, encoding='latin-1')
+    df_c.columns = df_c.columns.str.strip().str.lower()
 
-
-# --- Función semanas custom ---
-def assign_custom_weeks(df):
-    df = df.copy()
-    df['date'] = pd.to_datetime(df['date'])
-    year = df['date'].dt.year.iloc[0]
-    all_days = pd.date_range(f'{year}-01-01', f'{year}-12-31')
-    start = all_days[0]
-    while start.weekday() != 5 and start <= all_days[-1]:  # sábado
-        start += pd.Timedelta(days=1)
-    week_ends = [start]
-    while week_ends[-1] + pd.Timedelta(days=1) <= all_days[-1]:
-        next_end = week_ends[-1] + pd.Timedelta(days=7)
-        if next_end > all_days[-1]:
-            next_end = all_days[-1]
-        week_ends.append(next_end)
-    week_id = 1
-    curr_start = all_days[0]
-    for w_end in week_ends:
-        mask = (df['date'] >= curr_start) & (df['date'] <= w_end)
-        df.loc[mask, 'week'] = week_id
-        df.loc[mask, 'week_start'] = curr_start
-        df.loc[mask, 'week_end'] = w_end
-        curr_start = w_end + pd.Timedelta(days=1)
-        week_id += 1
-    df['week'] = df['week'].astype(int)
-    return df
-
-# --- Función Prophet con ajuste y futuro ---
-def weekly_forecast_with_adjustment_and_future(df, start_sunday='2025-01-05', final_date='2025-12-31'):
-    df = df.copy()
-    df['Date'] = pd.to_datetime(df['Date'])
-    df = df.sort_values('Date')
-    last_actual_date = df['Date'].max()
-    final_date = pd.Timestamp(final_date)
-    sundays = pd.date_range(start=pd.Timestamp(start_sunday), end=final_date, freq='W-SUN')
-
-    weekly_rows = []
-    daily_preds_list = []
-
-    model_kwargs = dict(seasonality_mode='additive',
-                        yearly_seasonality=True,
-                        changepoint_prior_scale=0.001,
-                        seasonality_prior_scale=4,
-                        n_changepoints=50)
-
-    for s in sundays:
-        train = df[df['Date'] < s].rename(columns={'Date':'ds','TGMV':'y'})[['ds','y']].dropna()
-        if len(train)<2:
-            continue
-        week_end = s + pd.Timedelta(days=6)
-        model = Prophet(**model_kwargs)
-        model.fit(train)
-        future = pd.DataFrame({'ds': pd.date_range(start=s, end=week_end)})
-        forecast = model.predict(future)[['ds','yhat']].copy()
-        baseline_week_pred = forecast['yhat'].sum()
-
-        st_end_for_factor = s + pd.Timedelta(days=2)
-        actual_st = df[(df['Date']>=s)&(df['Date']<=st_end_for_factor)][['Date','TGMV']].rename(columns={'Date':'ds','TGMV':'actual'})
-        cmp_df = forecast.merge(actual_st,on='ds',how='left')
-        cmp_df['pct_diff'] = np.where((~cmp_df['actual'].isna())&(cmp_df['yhat']!=0),
-                                      (cmp_df['actual']/cmp_df['yhat'])-1, np.nan)
-        cmp_df = cmp_df[cmp_df['ds']<=st_end_for_factor]
-        n_days_factor = int(cmp_df['pct_diff'].notna().sum())
-        factor = cmp_df['pct_diff'].mean() if n_days_factor>0 else np.nan
-        adjusted_week_pred = baseline_week_pred*(1+factor) if pd.notna(factor) else baseline_week_pred
-        week_actual = df[(df['Date']>=s)&(df['Date']<=week_end)]['TGMV']
-        actual_week_total = week_actual.sum() if len(week_actual)==7 else np.nan
-
-        dtmp = forecast.rename(columns={'yhat':'pred'})
-        dtmp['week_start'] = s
-        daily_preds_list.append(dtmp)
-
-        weekly_rows.append({'week_start':s,
-                            'week_end':week_end,
-                            'baseline_week_pred':baseline_week_pred,
-                            'adjustment_factor_SunMonTue':factor,
-                            'n_days_used_for_factor':n_days_factor,
-                            'adjusted_week_pred_hist':adjusted_week_pred,
-                            'actual_week_total':actual_week_total})
-    weekly_df = pd.DataFrame(weekly_rows).sort_values('week_start').reset_index(drop=True)
-    daily_df = pd.concat(daily_preds_list,ignore_index=True) if daily_preds_list else pd.DataFrame()
-
-    # Promedios históricos
-    valid_factors = weekly_df['adjustment_factor_SunMonTue'].dropna()
-    avg_all = valid_factors.mean() if len(valid_factors)>0 else 0
-    neg_factors = valid_factors[valid_factors<0]
-    pos_factors = valid_factors[valid_factors>0]
-    avg_neg = neg_factors.mean() if len(neg_factors)>0 else avg_all
-    avg_pos = pos_factors.mean() if len(pos_factors)>0 else avg_all
-    weekly_df['is_future'] = weekly_df['week_start']>last_actual_date
-    weekly_df['proj_general'] = np.where(weekly_df['adjustment_factor_SunMonTue'].notna(),
-                                         weekly_df['baseline_week_pred']*(1+weekly_df['adjustment_factor_SunMonTue']),
-                                         np.where(weekly_df['is_future'],
-                                                  weekly_df['baseline_week_pred']*(1+avg_all),
-                                                  weekly_df['baseline_week_pred']))
-    weekly_df['proj_neg'] = np.where(weekly_df['is_future'],weekly_df['baseline_week_pred']*(1+avg_neg),np.nan)
-    weekly_df['proj_pos'] = np.where(weekly_df['is_future'],weekly_df['baseline_week_pred']*(1+avg_pos),np.nan)
-
-    return weekly_df, daily_df
-
-# --- Main ---
-if plan_file and real_file:
-    df_plan = pd.read_csv(plan_file)
-    df_plan.columns = df_plan.columns.str.strip().str.lower()
-    df_plan['date'] = pd.to_datetime(df_plan['date'])
-    df_plan = assign_custom_weeks(df_plan)
-    plan_weekly = df_plan.groupby(['week','week_start','week_end'])['plan'].sum().reset_index()
-
-    df_real = pd.read_csv(real_file)
-    df_real.columns = df_real.columns.str.strip().str.lower()
-    df_real['date'] = pd.to_datetime(df_real['date'])
-    df_real['Date'] = df_real['date']  # para Prophet
-    df_real['TGMV'] = df_real['tgmv']  # para Prophet
-
-    # Forecast con Prophet
-    weekly_prophet, daily_prophet = weekly_forecast_with_adjustment_and_future(df_real)
-
-    # --- Agregamos columnas para comparación ---
-    real_2025 = df_real[df_real['date'].dt.year==2025].copy()
-    real_2025 = assign_custom_weeks(real_2025)
-    real_2025w = real_2025.groupby(['week','week_start','week_end'])['tgmv'].sum().reset_index().rename(columns={'tgmv':'real'})
-    df_weeks = plan_weekly.merge(real_2025w,on=['week','week_start','week_end'],how='left')
-    df_weeks = df_weeks.merge(weekly_prophet[['week_start','proj_general','proj_neg','proj_pos','is_future']],on='week_start',how='left')
-    df_weeks['diff_pred'] = df_weeks['proj_general'] - df_weeks['plan']
-    df_weeks['cumplimiento'] = df_weeks['real']/df_weeks['plan']*100
-    df_weeks['cumplimiento_future'] = df_weeks['proj_general']/df_weeks['plan']*100
-    df_weeks['semana_lbl'] = df_weeks.apply(lambda x: f"Semana {x['week']} ({x['week_start'].date()} a {x['week_end'].date()})", axis=1)
-
-
-    # --- Gráfico Real vs Plan vs Predicción con rango optimista/pesimista ---
+    # 2. Mostrar city_ids y country_codes
+    st.markdown("<h4 class='section-title'>🗺️ 2. Listas para copiar y pegar en SQL</h4>", unsafe_allow_html=True)
+    clusters = sorted(df_c['cluster'].dropna().unique())
+    cluster_seleccionado = st.selectbox("Selecciona tu cluster", clusters)
     
-    selection = alt.selection_point(fields=['week'])
+    ciudades_cluster = df_c[df_c['cluster'] == cluster_seleccionado]
+    city_ids = ciudades_cluster['city_id'].tolist()
+    country_codes = ciudades_cluster['country_code'].unique().tolist()
     
-    # Filtrar semanas futuras
-    df_future = df_weeks[df_weeks['is_future'].fillna(False)]
+    city_ids_str = ', '.join(map(str, city_ids))
+    country_codes_str = ", ".join(f"'{c}'" for c in country_codes)
     
-    # Real en columnas
-    real_chart = alt.Chart(df_weeks).mark_bar(opacity=0.5).encode(
-        x='week:O',
-        y=alt.Y('real:Q', title='TGMV', axis=alt.Axis(format=',')),
-        tooltip=['week','semana_lbl','real:Q'],
-        color=alt.value('#1f77b4'),
-        opacity=alt.condition(selection, alt.value(0.7), alt.value(0.5))
-    )
+    with st.expander("📋 Lista de city_id"):
+        st.code(city_ids_str, language="sql")
     
-    # Plan en barras grises
-    plan_chart = alt.Chart(df_weeks).mark_bar(opacity=0.8).encode(
-        x='week:O',
-        y=alt.Y('plan:Q', axis=alt.Axis(format=',')),
-        tooltip=['week','semana_lbl','plan:Q'],
-        color=alt.value('lightgray'),
-        opacity=alt.condition(selection, alt.value(1), alt.value(0.5))
-    )
-    
-    # Área sombreada optimista/pesimista (solo semanas futuras)
-    band_chart = alt.Chart(df_future).mark_area(opacity=0.5, color="lightblue").encode(
-        x='week:O',
-        y=alt.Y('proj_neg:Q', axis=alt.Axis(format=',')),
-        y2='proj_pos:Q',
-        tooltip=['week','semana_lbl','proj_neg:Q','proj_pos:Q']
-    )
-    
-    # Predicción: línea punteada + puntos rellenos
-    pred_chart = alt.layer(
-        alt.Chart(df_weeks).mark_line(strokeDash=[5,5], color='red').encode(
-            x='week:O',
-            y=alt.Y('proj_general:Q', axis=alt.Axis(format=',')),
-            tooltip=['week','semana_lbl','proj_general:Q']
-        ),
-        alt.Chart(df_weeks).mark_point(filled=True, size=15, stroke='red', color='red').encode(
-            x='week:O',
-            y='proj_general:Q',
-            tooltip=['week','semana_lbl','proj_general:Q']
-        )
-    )
-    
-    # Combinar todos los charts
-    chart = alt.layer(
-        plan_chart,
-        real_chart,
-        band_chart,
-        pred_chart
-    ).add_params(selection).interactive().properties(height=400, width=850)
-    
+    with st.expander("📋 Lista de country_code"):
+        st.code(country_codes_str, language="sql")
 
+    # 3. Upload CSV viajes
+    st.markdown("<h4 class='section-title'>📈 3. Carga el CSV de viajes</h4>", unsafe_allow_html=True)
+    df_viajes = st.file_uploader("Sube el CSV de viajes (pt, city_id, driver_id, trip_hour, trips, final_cohort, shor, asp, ipt, gmv)", type="csv")
 
+    if df_viajes is not None:
+        df_vi = pd.read_csv(df_viajes)
+        df_vi.columns = df_vi.columns.str.strip().str.lower()
+        
 
-    
-    # --- Gráfico Cumplimiento vs Plan ---
-    
-    # Crear columna de visualización según si es futuro o pasado
-    df_weeks['cumplimiento_display'] = np.where(
-        df_weeks['is_future'],
-        df_weeks['cumplimiento_future'],
-        df_weeks['cumplimiento']
-    )
-    
-    # Columna con color según reglas
-    def color_rule(row):
-        if row['is_future']:
-            return 'lightblue'  # futuro
-        elif row['cumplimiento_display'] >= 100:
-            return 'green'
-        else:
-            return 'orange'
-    
-    df_weeks['color_cumplimiento'] = df_weeks.apply(color_rule, axis=1)
-    
-    # Selección interactiva
-    selection2 = alt.selection_point(fields=['week'])
-    
-    # Chart Altair
-    chart2 = (
-        alt.Chart(df_weeks)
-        .mark_bar()
-        .encode(
-            x=alt.X('week:O', title='Semana'),
-            y=alt.Y('cumplimiento_display:Q', title='% Cumplimiento Plan'),
-            color=alt.Color('color_cumplimiento:N', legend=None),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-                alt.Tooltip('plan:Q', title='Plan', format=','),
-                alt.Tooltip('real:Q', title='Real', format=','),
-                alt.Tooltip('proj_general:Q', title='Proyección', format=','),
-                alt.Tooltip('cumplimiento_display:Q', title='% Cumplimiento', format='.1f')
-            ],
-            opacity=alt.condition(selection2, alt.value(1), alt.value(0.7))
-        )
-        .add_params(selection2)
-        .interactive()
-        .properties(height=350, width=850)
-    )
-    
+        # --- Multiple select cohort ---
+        cohorts_disponibles = sorted(df_vi['final_cohort'].fillna('No Cohort').unique())
+        cohort_seleccionados = st.sidebar.multiselect("Selecciona cohorts a incentivar", cohorts_disponibles, default=cohorts_disponibles)
 
+        # Filtrar por cohorts seleccionados
+        df_v = df_vi[df_vi['final_cohort'].isin(cohort_seleccionados)]
 
-    real_2024 = df_real[df_real['date'].dt.year==2024].copy()
-    real_2024 = assign_custom_weeks(real_2024)
-    real_2024w = real_2024.groupby(['week','week_start','week_end'])['tgmv'].sum().reset_index().rename(columns={'tgmv':'real_2024'})
+        # Sidebar inputs
+        st.sidebar.header("🏙️ Selección de ciudad y horario")
+        ciudades_disponibles = ciudades_cluster[['city_name', 'city_id', 'gmv', 'country_code']]
+        directorio_ciudades = {
+            row['city_name']: {
+                "city_id": row['city_id'],
+                "gmv": row['gmv'],
+                "country_code": row['country_code']
+            } for _, row in ciudades_disponibles.iterrows()
+        }
+        ciudad_seleccionada = st.sidebar.selectbox("Selecciona la ciudad", list(directorio_ciudades.keys()))
+        city_info = directorio_ciudades[ciudad_seleccionada]
+        city_id = city_info['city_id']
+        country_code = city_info['country_code']
 
-    # Unir semanas 2024 y 2025
-    df_yoy = df_weeks.merge(real_2024w[['week','real_2024']], on='week', how='left')
+        hora_inicio = st.sidebar.number_input("Hora inicio (0-23)", min_value=0, max_value=23, value=9)
+        hora_fin = st.sidebar.number_input("Hora fin (0-23)", min_value=0, max_value=23, value=12)
 
-    # Calcular cumplimiento YoY
-    df_yoy['cumplimiento_yoy'] = np.where(
-        df_yoy['is_future'],
-        (df_yoy['proj_general'] / df_yoy['real_2024']-1) * 100,  # Futuro -> proyección
-        (df_yoy['real'] / df_yoy['real_2024']-1) * 100           # Pasado -> real
-    )
+        st.sidebar.header("⚙️ Tipo de Incentivo")
+        tipo_incentivo = st.sidebar.selectbox("Selecciona el tipo de incentivo", ["DXGY", "Multiplier"])
 
+        st.sidebar.header("🎯 Define los Tiers")
+        num_tiers = st.sidebar.slider("Número de Tiers", min_value=1, max_value=6, value=3)
 
-    def color_rule_yoy(row):
-        if row['is_future']:
-            return 'lightblue'   # futuro
-        elif row['cumplimiento_yoy'] >= 0:
-            return 'green'
-        else:
-            return 'orange'
-    
-    df_yoy['color_yoy'] = df_yoy.apply(color_rule_yoy, axis=1)
+        tiers_manual = []
+        for i in range(num_tiers):
+            viajes = st.sidebar.number_input(f"Viajes Tier {i+1}", min_value=1, value=5 + i*2, key=f"viajes_t{i}")
 
-    
-    selection3 = alt.selection_point(fields=['week'])
-    
-    chart3 = (
-        alt.Chart(df_yoy)
-        .mark_bar()
-        .encode(
-            x=alt.X('week:O', title='Semana', axis=alt.Axis(format=',')),
-            y=alt.Y('cumplimiento_yoy:Q', title='% Cumplimiento YoY (2025 vs 2024)', axis=alt.Axis(format=',')),
-            color=alt.Color('color_yoy:N', legend=None),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-                alt.Tooltip('real_2024:Q', title='Real 2024', format=','),
-                alt.Tooltip('real:Q', title='Real 2025', format=','),
-                alt.Tooltip('proj_general:Q', title='Proyección 2025', format=','),
-                alt.Tooltip('cumplimiento_yoy:Q', title='% Cumplimiento YoY', format='.1f')
-            ],
-            opacity=alt.condition(selection3, alt.value(1), alt.value(0.7))
-        )
-        .add_params(selection3)
-        .interactive()
-        .properties(height=350, width=850)
-    )
+            if tipo_incentivo == "DXGY":
+                reward = st.sidebar.number_input(f"Reward por viaje Tier {i+1} ($)", min_value=0, value=600 + i*200, key=f"reward_t{i}")
+                tiers_manual.append({"viajes": viajes, "reward": reward})
 
+            elif tipo_incentivo == "Multiplier":
+                multiplier = st.sidebar.number_input(f"Multiplier Tier {i+1} (%)", min_value=0.0, max_value=100.0, value=20.0 + i*10, step=1.0, key=f"multiplier_t{i}")
+                tiers_manual.append({"viajes": viajes, "multiplier": multiplier / 100})
 
+        burn_objetivo = st.sidebar.number_input("🎯 Burn objetivo % (opcional)", min_value=0.0, max_value=100.0, value=5.0)
 
-    # --- Contenedores estilo card para secciones ---
-    
-    # --- Vista Semanal (tabla) ---
-    with st.container():
-        st.markdown("""
-        <div class='card'>
-            <div class='section-title'>📊 Vista Semanal</div>
-            <div class='section-subtitle'>Tabla resumen de Plan, Real y Predicción semanal</div>
-        </div>
-        """, unsafe_allow_html=True)
+        # Filtramos solo datos de la ciudad seleccionada y cohorts seleccionados
+        df_dia = df_v[df_v['city_id'] == city_id]
+
+        # Agrupamos por hora para total viajes
+        trips_por_hora = df_dia.groupby('trip_hour')['trips'].sum().reset_index()
+
+        # Agrupamos por hora para contar conductores únicos activos en esa hora
+        conductores_por_hora = df_dia.groupby('trip_hour')['driver_id'].nunique().reset_index()
+        conductores_por_hora.rename(columns={'driver_id': 'conductores_activos'}, inplace=True)
+
+        # Unimos ambos DataFrames para calcular TPH por hora
+        tph_por_hora_df = pd.merge(trips_por_hora, conductores_por_hora, on='trip_hour', how='left')
+
+        # Calculamos TPH = trips / conductores activos en esa hora
+        tph_por_hora_df['conductores_activos'] = tph_por_hora_df['conductores_activos'].replace(0, pd.NA)
+        tph_por_hora_df['tph'] = tph_por_hora_df['trips'] / tph_por_hora_df['conductores_activos']
+
+        # Mostrar tabla
+        st.markdown("---")
+        st.markdown(f"<h4 style='color:#FF6600; text-align:center;'>Información y Visuales</h4>", unsafe_allow_html=True)
+        st.markdown(f"<h4 class='section-title'>⚙️ {ciudad_seleccionada} Tabla de Información</h4>", unsafe_allow_html=True)
         st.dataframe(
-            df_weeks.style.format({
-                "plan": "{:,.1f}",
-                "real": "{:,.1f}",
-                "proj_general": "{:,.1f}",
-                "proj_neg": "{:,.1f}",
-                "proj_pos": "{:,.1f}",
-                "diff_pred": "{:,.1f}",
-                "cumplimiento": "{:,.1f}",
-                "cumplimiento_future": "{:,.1f}"
-            })
+            tph_por_hora_df.rename(columns={
+                'trip_hour': 'Hora',
+                'trips': 'Total de viajes',
+                'conductores_activos': 'Conductores activos',
+                'tph': 'TPH'
+            }),
+            use_container_width=True,
+            height=250
         )
-    
-    # --- Gráfico Real vs Plan vs Predicción ---
-    with st.container():
-        st.markdown("""
-        <div class='card'>
-            <div class='section-title'>📊 Gráfico Real vs Plan vs Predicción</div>
-            <div class='section-subtitle'>Incluye rango optimista/pesimista para semanas futuras</div>
-        </div>
-        """, unsafe_allow_html=True)
+
+        # Gráficos Trips por hora
+        st.markdown(f"<h4 class='section-title'>🚖 {ciudad_seleccionada} Total de Viajes Por Hora</h4>", unsafe_allow_html=True)
+        chart_viajes = alt.Chart(tph_por_hora_df).mark_bar(color='#f97316').encode(
+            x=alt.X('trip_hour', title='Hora del día'),
+            y=alt.Y('trips', title='Total de viajes'),
+            tooltip=['trip_hour', 'trips']
+        ).properties(width=650, height=300)
+        st.altair_chart(chart_viajes, use_container_width=True)
+
+        # Gráfico Drivers
+        st.markdown(f"<h4 class='section-title'>🚙 {ciudad_seleccionada} Total de DRVS Por Hora</h4>", unsafe_allow_html=True)
+        chart_drivers = alt.Chart(tph_por_hora_df).mark_bar(color='#3b82f6').encode(
+            x=alt.X('trip_hour', title='Hora del día'),
+            y=alt.Y('conductores_activos', title='Total de drivers'),
+            tooltip=['trip_hour', 'conductores_activos']
+        ).properties(width=650, height=300)
+        st.altair_chart(chart_drivers, use_container_width=True)
+
+        # Gráfico TPH
+        st.markdown(f"<h4 class='section-title'>🚃 {ciudad_seleccionada} TPH Por Hora</h4>", unsafe_allow_html=True)
+        chart_tph = alt.Chart(tph_por_hora_df).mark_bar(color='#74c476').encode(
+            x=alt.X('trip_hour', title='Hora del día'),
+            y=alt.Y('tph', title='TPH'),
+            tooltip=['trip_hour', 'tph']
+        ).properties(width=650, height=300)
+        st.altair_chart(chart_tph, use_container_width=True)
+
+        # Gráfico distribución de viajes por conductor en horario seleccionado
+        df_filtrado_horas = df_dia[(df_dia['trip_hour'] >= hora_inicio) & (df_dia['trip_hour'] < hora_fin)]
+        df_conductor = df_filtrado_horas.groupby('driver_id')['trips'].sum().reset_index()
+
+        distribucion = df_conductor['trips'].value_counts().sort_index().reset_index()
+        distribucion.columns = ['Viajes', 'Conductores']
+
+        st.markdown(f"<h4 class='section-title'>📊 Distribución de viajes por conductor entre {hora_inicio}:00 y {hora_fin}:00</h4>", unsafe_allow_html=True)
+        chart = alt.Chart(distribucion).mark_bar(color="#f97316").encode(
+            x=alt.X('Viajes:O', title='Número de viajes'),
+            y=alt.Y('Conductores:Q', title='Número de conductores'),
+            tooltip=['Viajes', 'Conductores']
+        ).properties(width=600, height=300)
         st.altair_chart(chart, use_container_width=True)
-    
-    # --- Gráfico Cumplimiento vs Plan (%) ---
-    with st.container():
-        st.markdown("""
-        <div class='card'>
-            <div class='section-title'>📊 Cumplimiento vs Plan (%)</div>
-            <div class='section-subtitle'>Se muestran valores reales y proyecciones para semanas futuras</div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.altair_chart(chart2, use_container_width=True)
-    
-    # --- Gráfico YoY 2025 vs 2024 ---
-    with st.container():
-        st.markdown("""
-        <div class='card'>
-            <div class='section-title'>📊 YoY 2025 vs 2024</div>
-            <div class='section-subtitle'>Comparación de TGMV real y proyectado respecto a 2024</div>
-        </div>
-        """, unsafe_allow_html=True)
-        st.altair_chart(chart3, use_container_width=True)
 
+        # --- Cálculo del TPH incentivo y mínimo de viajes estimados ---
+        df_incentivo = df_filtrado_horas
+        df_por_hora_incentivo = df_incentivo.groupby('trip_hour').agg(
+            total_trips=('trips', 'sum'),
+            drivers_hora=('driver_id', 'nunique')
+        ).reset_index()
 
+        suma_trips_incentivo = df_por_hora_incentivo['total_trips'].sum()
+        suma_drivers_incentivo = df_por_hora_incentivo['drivers_hora'].sum()
 
-    import datetime
+        tph_incentivo = suma_trips_incentivo / suma_drivers_incentivo if suma_drivers_incentivo > 0 else 0
+        horas_incentivo = hora_fin - hora_inicio
+        minimo_trips_estimado = round(tph_incentivo * horas_incentivo)
 
-    # Fecha de hoy
-    today = pd.Timestamp.today()
-    
-    # Detectar semana en curso
-    current_week = df_weeks[(df_weeks['week_start'] <= today) & (df_weeks['week_end'] >= today)]
-    if not current_week.empty:
-        week_start = current_week['week_start'].iloc[0]
-        week_end = current_week['week_end'].iloc[0]
-        week_number = current_week['week'].iloc[0]
-    
-        # Datos diarios de la semana actual
-        week_days = df_real[(df_real['date'] >= week_start) & (df_real['date'] <= today)]
-    
-        parcial_real = week_days['TGMV'].sum()
-        dias_completados = len(week_days)
-        total_dias_semana = (week_end - week_start).days + 1
-    
-        # Estimación para la semana completa
-        tendencia_diaria = parcial_real / dias_completados if dias_completados > 0 else 0
-        estimado_semana_completa = tendencia_diaria * total_dias_semana
-    
-        # Plan de la semana
-        plan_semana = current_week['plan'].iloc[0]
-        cumplimiento_est = estimado_semana_completa / plan_semana * 100
-    
-        # YoY estimado
-        real_2024_semana = df_yoy[df_yoy['week']==week_number]['real_2024'].iloc[0]
-        yoy_est = (estimado_semana_completa / real_2024_semana - 1) * 100
-
-    # --- Cards con columnas para estimaciones de la semana en curso ---
-    if not current_week.empty:
+        # Mostrar métricas
         col1, col2 = st.columns(2)
-    
         with col1:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">📈 Estimación Cumplimiento al Plan</div>', unsafe_allow_html=True)
-            st.markdown('<div class="section-subtitle">Semana en curso basada en tendencia diaria</div>', unsafe_allow_html=True)
+            st.metric("🚀 TPH en horas del incentivo", f"{tph_incentivo:.2f}")
+        with col2:    
+            st.metric("📌 Mínimo de trips estimado", f"{minimo_trips_estimado} viajes")
             
-            est_chart = alt.Chart(pd.DataFrame({
-                'Semana':[f"Semana {week_number}"],
-                'Cumplimiento Estimado':[cumplimiento_est]
-            })).mark_bar(color='#8A2BE2', opacity=0.8).encode(
-                x='Semana:N',
-                y=alt.Y('Cumplimiento Estimado:Q', title='% Cumplimiento Plan'),
-                tooltip=[alt.Tooltip('Cumplimiento Estimado:Q', format='.1f')]
-            ).properties(height=300, width=400)
-            
-            st.altair_chart(est_chart, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-    
+        promedio_asp = df_filtrado_horas['asp'].mean() if not df_filtrado_horas.empty else 0
+        promedio_ipt = df_filtrado_horas['ipt'].mean() if not df_filtrado_horas.empty else 0
+
+        
+        col_asp, col_ipt = st.columns(2)
+        with col_asp:
+            st.metric("💵 ASP promedio ($)", f"{promedio_asp:.2f}")
+        with col_ipt:
+            st.metric("🛠️ IPT promedio ($)", f"{promedio_ipt:.2f}")
+
+        # --- Lógica cálculo incentivos ---
+        df_conductor = df_filtrado_horas.groupby('driver_id')['trips'].sum().reset_index()
+
+        tiers = sorted(tiers_manual, key=lambda x: x['viajes'])
+        conductores_por_tier = [0] * len(tiers)
+
+        for _, row in df_conductor.iterrows():
+            viajes = row['trips']
+            for i in range(len(tiers)):
+                if viajes >= tiers[i]['viajes']:
+                    conductores_por_tier[i] += 1
+
+        conductores_exclusivos = []
+        for i in range(len(tiers)):
+            if i == len(tiers) - 1:
+                exclusivos = conductores_por_tier[i]
+            else:
+                exclusivos = conductores_por_tier[i] - conductores_por_tier[i + 1]
+            conductores_exclusivos.append(exclusivos)
+
+        reward_acumulado_por_tier = []
+        avg_ipt = df_filtrado_horas['ipt'].mean() if not df_filtrado_horas.empty else 0
+
+        if tipo_incentivo == "DXGY":
+            for i in range(len(tiers)):
+                reward_total = 0
+                for j in range(i + 1):
+                    viajes_incrementales = tiers[j]['viajes'] if j == 0 else tiers[j]['viajes'] - tiers[j - 1]['viajes']
+                    reward_total += viajes_incrementales * tiers[j]['reward']
+                reward_acumulado_por_tier.append(reward_total)
+
+        elif tipo_incentivo == "Multiplier":
+            for i in range(len(tiers)):
+                viajes_incrementales = tiers[i]['viajes'] if i == 0 else tiers[i]['viajes'] - tiers[i - 1]['viajes']
+                multiplier = tiers[i]['multiplier']
+                cap = round(avg_ipt * multiplier)
+                reward_total = viajes_incrementales
+                reward_total = viajes_incrementales * cap
+                if i > 0:
+                    reward_total += reward_acumulado_por_tier[i - 1]
+                reward_acumulado_por_tier.append(reward_total)
+
+        gmv_total_real = df_vi[df_vi['city_id'] == city_id]['gmv'].sum()
+        total_burn = sum(reward_acumulado_por_tier[i] * conductores_exclusivos[i] for i in range(len(tiers)))
+        porcentaje_burn_real = (total_burn / gmv_total_real) * 100 if gmv_total_real > 0 else 0
+        conductores_calificados = sum(conductores_exclusivos)
+        win_rate = conductores_calificados / df_conductor.shape[0] if df_conductor.shape[0] > 0 else 0
+        def formatear_numero_grande(num):
+            num = float(num)
+            if abs(num) >= 1_000_000_000:
+                return f"{num / 1_000_000_000:.2f}B"
+            elif abs(num) >= 1_000_000:
+                return f"{num / 1_000_000:.2f}M"
+            elif abs(num) >= 1_000:
+                return f"{num / 1_000:.2f}K"
+            else:
+                return f"{num:.2f}"
+        gmv_formateado = formatear_numero_grande(gmv_total_real)
+
+        st.markdown("---")
+        st.markdown(f"<h4 class='section-title'>📈 Resultados del Incentivo</h4>", unsafe_allow_html=True)
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("🚗 Conductores calificados", conductores_calificados)
+            st.metric("🔥 % Burn", f"{porcentaje_burn_real:.2f}%")
         with col2:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">📈 Estimación Crecimiento YoY</div>', unsafe_allow_html=True)
-            st.markdown('<div class="section-subtitle">Semana en curso basada en tendencia diaria</div>', unsafe_allow_html=True)
-            
-            yoy_chart = alt.Chart(pd.DataFrame({
-                'Semana':[f"Semana {week_number}"],
-                'YoY Estimado':[yoy_est]
-            })).mark_bar(color='#20B2AA', opacity=0.8).encode(
-                x='Semana:N',
-                y=alt.Y('YoY Estimado:Q', title='% Crecimiento YoY'),
-                tooltip=[alt.Tooltip('YoY Estimado:Q', format='.1f')]
-            ).properties(height=300, width=400)
-            
-            st.altair_chart(yoy_chart, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            
-    # --- Ajustar semanas domingo-sábado ---
-    def assign_custom_weeks(df):
-        # Semana empieza en domingo → ajustar con weekday (0=lunes,...,6=domingo)
-        df['week_start'] = df['date'] - pd.to_timedelta((df['date'].dt.weekday + 1) % 7, unit='D')
-        df['week_end'] = df['week_start'] + pd.Timedelta(days=6)
-    
-        # Número de semana custom (domingo-sábado)
-        df['week'] = ((df['week_start'] - df['week_start'].min()).dt.days // 7) + 1
-        return df
-    
-    # --- Identificar semana en curso ---
-    today = pd.Timestamp.today().normalize()  # Fecha de hoy sin hora
-    df_weeks['is_current'] = df_weeks.apply(
-        lambda row: (row['week_start'] <= today <= row['week_end']), axis=1
-    )
-    
-    # --- Columna combinada: real (pasado) o proyección (actual/futuro) ---
-    def get_value(row):
-        if not row['is_future'] and not row['is_current']:
-            return row['real']  # Pasado → real
+            st.metric("💸 Burn total ($)", f"{total_burn:,.2f}")
+            st.metric("🎯 % Burn Target", f"{burn_objetivo:.2f}%")
+        with col3:
+            st.metric("🏁 Win Rate", f"{win_rate:.2%}")
+            delta_burn = burn_objetivo - porcentaje_burn_real
+            color = "inverse" if delta_burn < 0 else "normal"
+            st.metric("📉 Burn vs Target", value=f"{delta_burn:+.2f}%", delta=f"{delta_burn:+.2f}%", delta_color=color)
+        with col4:
+            st.metric("💰 GMV", gmv_formateado)
+
+        # --- Desglose por Tier ---
+        st.markdown("---")
+        st.markdown("<h3 class='sub-header'>📊 Desglose por Tier</h3>", unsafe_allow_html=True)
+
+        porcentaje_sobre_calificados = [
+            (c / conductores_calificados if conductores_calificados > 0 else 0)
+            for c in conductores_exclusivos
+        ]
+
+        df_resultado = pd.DataFrame({
+            "Tier": [f"Tier {i+1}" for i in range(len(tiers))],
+            "Viajes requeridos": [t['viajes'] for t in tiers],
+            "Conductores exclusivos": conductores_exclusivos,
+            "Reward acumulado": reward_acumulado_por_tier,
+            "Burn por tier": [reward_acumulado_por_tier[i] * conductores_exclusivos[i] for i in range(len(tiers))],
+            "% sobre calificados": [f"{p:.1%}" for p in porcentaje_sobre_calificados]
+        })
+
+        if tipo_incentivo == "DXGY":
+            df_resultado["Reward por viaje"] = [t['reward'] for t in tiers]
+        elif tipo_incentivo == "Multiplier":
+            df_resultado["Multiplier %"] = [f"{t['multiplier']*100:.0f}%" for t in tiers]
+            df_resultado["Cap por viaje"] = [round(avg_ipt * t['multiplier']) for t in tiers]
+
+        st.dataframe(df_resultado, use_container_width=True, height=300)
+
+        # --- Formato incremental para copiar/pegar ---
+        st.markdown("---")
+        st.markdown("### 📝 Formato incremental para copiar y pegar:")
+        
+        if country_code == "MX":
+            sufijo = "MXN$"
+        elif country_code == "CR":
+            sufijo = "₡"
         else:
-            return row['proj_general']  # Semana en curso o futuro → predicción
-    
-    df_weeks['real_or_proj'] = df_weeks.apply(get_value, axis=1)
-    
-    # --- % de cumplimiento vs plan ---
-    df_weeks['cumplimiento_mix'] = (df_weeks['real_or_proj'] / df_weeks['plan']) * 100
-    
-    # --- Colores según reglas ---
-    def color_rule_mix(row):
-        if not row['is_future'] and not row['is_current']:
-            return 'blue'       # Pasado → azul fuerte
-        else:
-            return 'lightblue'  # Semana en curso o futuro → azul claro
-    
-    df_weeks['color_mix'] = df_weeks.apply(color_rule_mix, axis=1)
-    
-    # --- Gráfico ---
-    st.subheader("📊 Cumplimiento vs Plan (Real + Semana en curso + Futuro)")
-    
-    selection_mix = alt.selection_point(fields=['week'])
-    
-    chart_mix = (
-        alt.Chart(df_weeks)
-        .mark_bar()
-        .encode(
-            x=alt.X('week:O', title='Semana'),
-            y=alt.Y('cumplimiento_mix:Q', title='% Cumplimiento Plan'),
-            color=alt.Color('color_mix:N', legend=None),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-                alt.Tooltip('plan:Q', title='Plan', format=','),
-                alt.Tooltip('real:Q', title='Real', format=','),
-                alt.Tooltip('proj_general:Q', title='Proyección', format=','),
-                alt.Tooltip('cumplimiento_mix:Q', title='% Cumplimiento', format='.1f')
-            ],
-            opacity=alt.condition(selection_mix, alt.value(1), alt.value(0.7))
+            sufijo = "$"
+        
+        formato_tiers_incremental = []
+        
+        for i, t in enumerate(tiers):
+            viajes_incrementales = t['viajes'] if i == 0 else t['viajes'] - tiers[i - 1]['viajes']
+        
+            if tipo_incentivo == "DXGY":
+                # En DXGY se usa el total de viajes requerido por tier, no los incrementales
+                reward_total = t['viajes'] * t['reward']
+                formato_tiers_incremental.append(
+                    f"Tier{i+1}: {t['viajes']}Trips*{reward_total:.0f}{sufijo}"
+                )
+        
+            elif tipo_incentivo == "Multiplier":
+                multiplier_pct = int(t['multiplier'] * 100)
+                cap = round(avg_ipt * t['multiplier'])
+                formato_tiers_incremental.append(
+                    f"Tier{i+1}: {viajes_incrementales}Trips*{multiplier_pct}%ASP*Cap{cap}{sufijo}"
+                )
+        
+        formato_tiers_str = ", ".join(formato_tiers_incremental)
+        st.code(formato_tiers_str, language="")
+
+        # --- Acumulador de incentivos ---
+        if 'incentivos_guardados' not in st.session_state:
+            st.session_state.incentivos_guardados = []
+        
+        # Botón para guardar el incentivo actual
+        if st.button("💾 Guardar incentivo actual"):
+            incentivo_nuevo = {
+                "Ciudad": ciudad_seleccionada,
+                "Cohorts": ", ".join(cohort_seleccionados),
+                "Horario": f"{hora_inicio:02d}:00 - {hora_fin:02d}:00",
+                "Incentivo": formato_tiers_str,
+                "Burn": porcentaje_burn_real
+            }
+            st.session_state.incentivos_guardados.append(incentivo_nuevo)
+            st.success("✅ Incentivo guardado")
+        
+        # Mostrar tabla de incentivos guardados
+        if st.session_state.incentivos_guardados:
+            st.markdown("### 📋 Incentivos acumulados")
+        
+            df_acumulado = pd.DataFrame(st.session_state.incentivos_guardados)
+            st.dataframe(df_acumulado, use_container_width=True)
+            
+            # Selección para borrar uno específico
+            index_borrar = st.selectbox(
+                "Selecciona un incentivo para eliminar", 
+                options=[f"{i+1}. {item['Ciudad']} - {item['Horario']}" for i, item in enumerate(st.session_state.incentivos_guardados)]
+            )
+        
+            if st.button("❌ Borrar incentivo seleccionado"):
+                index = int(index_borrar.split(".")[0]) - 1
+                st.session_state.incentivos_guardados.pop(index)
+                st.success("🗑️ Incentivo eliminado")
+
+
+            # Botón para borrar todos
+            if st.button("🗑️ Borrar todos los incentivos"):
+                st.session_state.incentivos_guardados = []
+                st.success("🧹 Incentivos eliminados")
+        
+        
+        # --- Footer ---
+        st.markdown("---")
+        st.markdown(
+            "<p style='text-align:center; color:#888888; font-size:16px;'>"
+            "© 2025 DXGY/Multiplier Calculator - Hecho con ❤️ por POC"
+            "</p>",
+            unsafe_allow_html=True
         )
-        .add_params(selection_mix)
-        .interactive()
-        .properties(height=350, width=850)
-    )
-    
-    st.altair_chart(chart_mix, use_container_width=True)
-
-
-    # --- Columna combinada para YoY (real pasado o proyección actual/futuro) ---
-    def get_value_yoy(row):
-        if not row['is_future'] and not row['is_current']:
-            return row['real']   # Pasado → real
-        else:
-            return row['proj_general']  # Semana en curso o futuro → proyección
-    
-    df_weeks['real_or_proj_yoy'] = df_weeks.apply(get_value_yoy, axis=1)
-    
-    # --- % crecimiento YoY ---
-    df_weeks['yoy_mix'] = ((df_weeks['real_or_proj_yoy'] / df_weeks['real_last_year']) - 1) * 100
-    
-    # --- Colores según reglas ---
-    def color_rule_yoy(row):
-        if not row['is_future'] and not row['is_current']:
-            return 'blue'       # Pasado → azul fuerte
-        else:
-            return 'lightblue'  # Semana en curso o futuro → azul claro
-    
-    df_weeks['color_yoy'] = df_weeks.apply(color_rule_yoy, axis=1)
-    
-    # --- Gráfico ---
-    st.subheader("📊 Crecimiento YoY (Real + Semana en curso + Futuro)")
-    
-    selection_yoy = alt.selection_point(fields=['week'])
-    
-    chart_yoy = (
-        alt.Chart(df_weeks)
-        .mark_bar()
-        .encode(
-            x=alt.X('week:O', title='Semana'),
-            y=alt.Y('yoy_mix:Q', title='% Crecimiento YoY'),
-            color=alt.Color('color_yoy:N', legend=None),
-            tooltip=[
-                alt.Tooltip('week:O', title='Semana'),
-                alt.Tooltip('semana_lbl:N', title='Rango de fechas'),
-                alt.Tooltip('real_last_year:Q', title='Real año pasado', format=','),
-                alt.Tooltip('real:Q', title='Real actual', format=','),
-                alt.Tooltip('proj_general:Q', title='Proyección actual', format=','),
-                alt.Tooltip('yoy_mix:Q', title='% YoY', format='.1f')
-            ],
-            opacity=alt.condition(selection_yoy, alt.value(1), alt.value(0.7))
-        )
-        .add_params(selection_yoy)
-        .interactive()
-        .properties(height=350, width=850)
-    )
-    
-    st.altair_chart(chart_yoy, use_container_width=True)
-
-
-
-
-
-
